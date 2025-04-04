@@ -20,13 +20,14 @@ class QuotesSpider(scrapy.Spider):
         Path(filename).write_bytes(response.body)
         self.log(f"Saved file {filename}")
 
-process = CrawlerProcess(
-    settings={
-        "FEEDS": {
-            "items.json": {"format": "json"},
-        },
-    }
-)
+def runspider():
+    process = CrawlerProcess(
+        settings={
+            "FEEDS": {
+                "items.json": {"format": "json"},
+            },
+        }   
+    )
 
-process.crawl(QuotesSpider)
-process.start()
+    process.crawl(QuotesSpider)
+    process.start()
