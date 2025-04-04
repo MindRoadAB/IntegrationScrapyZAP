@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import scrapy
-
+from scrapy.crawler import CrawlerProcess
 
 class QuotesSpider(scrapy.Spider):
     name = "quotes"
@@ -19,3 +19,14 @@ class QuotesSpider(scrapy.Spider):
         filename = f"quotes-{page}.html"
         Path(filename).write_bytes(response.body)
         self.log(f"Saved file {filename}")
+
+process = CrawlerProcess(
+    settings={
+        "FEEDS": {
+            "items.json": {"format": "json"},
+        },
+    }
+)
+
+process.crawl(QuotesSpider)
+process.start()
