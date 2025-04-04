@@ -1,1 +1,11 @@
-virtual
+# Cachefiler, kompilerad kod med mera
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtuell
+virtual/
+.env/
+
+# Loggfiler från Scrapy
+*.log
