@@ -1,8 +1,12 @@
 from pathlib import Path
 
 import scrapy
+
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 
 class ZAPSpider(scrapy.Spider):
     name = "zapspider"
