@@ -3,15 +3,15 @@ from pathlib import Path
 import scrapy
 from scrapy.crawler import CrawlerProcess
 
-class QuotesSpider(scrapy.Spider):
-    name = "quotes"
+class ZAPSpider(scrapy.Spider):
+    name = "zapspider"
+
+    def __init__(self, urls : list, *args, **kwargs):
+        super(ZAPSpider, self).__init__(*args, **kwargs)
+        self.urls = urls
 
     def start_requests(self):
-        urls = [
-            "https://quotes.toscrape.com/page/1/",
-            "https://quotes.toscrape.com/page/2/",
-        ]
-        for url in urls:
+        for url in self.urls:
             yield scrapy.Request(url=url, callback=self.parse)
 
     def parse(self, response):
@@ -19,8 +19,11 @@ class QuotesSpider(scrapy.Spider):
         filename = f"quotes-{page}.html"
         Path(filename).write_bytes(response.body)
         self.log(f"Saved file {filename}")
+    
+    def closed(self, reason):
+        pass
 
-def runspider():
+def runspider(urls : list[str]):
     process = CrawlerProcess(
         settings={
             "FEEDS": {
@@ -29,5 +32,5 @@ def runspider():
         }   
     )
 
-    process.crawl(QuotesSpider)
+    process.crawl(ZAPSpider, urls)
     process.start()

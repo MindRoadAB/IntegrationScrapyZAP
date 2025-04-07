@@ -12,6 +12,8 @@ BOT_NAME = "zapcrawler"
 SPIDER_MODULES = ["zapcrawler.spiders"]
 NEWSPIDER_MODULE = "zapcrawler.spiders"
 
+LOG_ENABLED = False
+
 ADDONS = {}
 
 
