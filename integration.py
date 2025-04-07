@@ -3,6 +3,7 @@ from zapcrawler.zapcrawler.spiders.zapspider import runspider
 class Integrator:
     def __init__(self, urls : list):
         self.urls = urls
+        self.crawler_result = []
 
     def execute(self):
         self.crawl()
@@ -10,7 +11,7 @@ class Integrator:
         self.analyze()
 
     def crawl(self):
-        runspider(self.urls)
+        self.crawler_result = runspider(self.urls)
 
     def attack(self):
         pass

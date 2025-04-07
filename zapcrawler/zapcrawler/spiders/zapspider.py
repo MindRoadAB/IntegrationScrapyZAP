@@ -2,6 +2,7 @@ from pathlib import Path
 
 import scrapy
 from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
 
 class ZAPSpider(scrapy.Spider):
     name = "zapspider"
@@ -9,28 +10,21 @@ class ZAPSpider(scrapy.Spider):
     def __init__(self, urls : list, *args, **kwargs):
         super(ZAPSpider, self).__init__(*args, **kwargs)
         self.urls = urls
+        self.result = []
 
     def start_requests(self):
         for url in self.urls:
             yield scrapy.Request(url=url, callback=self.parse)
 
     def parse(self, response):
-        page = response.url.split("/")[-2]
-        filename = f"quotes-{page}.html"
-        Path(filename).write_bytes(response.body)
-        self.log(f"Saved file {filename}")
-    
-    def closed(self, reason):
-        pass
+        self.result.append(response.body)
 
 def runspider(urls : list[str]):
-    process = CrawlerProcess(
-        settings={
-            "FEEDS": {
-                "items.json": {"format": "json"},
-            },
-        }   
-    )
+    process = CrawlerProcess(get_project_settings())
 
-    process.crawl(ZAPSpider, urls)
+    crawler = process.create_crawler(ZAPSpider)
+
+    process.crawl(crawler, urls)
     process.start()
+
+    return crawler.spider.result
