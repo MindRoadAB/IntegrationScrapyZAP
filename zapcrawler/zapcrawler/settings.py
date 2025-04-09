@@ -12,10 +12,20 @@ BOT_NAME = "zapcrawler"
 SPIDER_MODULES = ["zapcrawler.spiders"]
 NEWSPIDER_MODULE = "zapcrawler.spiders"
 
-LOG_ENABLED = False
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+
+PLAYWRIGHT_BROWSER_TYPE = 'firefox'
+
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+        "headless": True,
+    }
 
 ADDONS = {}
-
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = "zapcrawler (+http://www.yourdomain.com)"

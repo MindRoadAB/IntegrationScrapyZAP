@@ -6,6 +6,9 @@ För att kunna köra projektet behövs ett antal program.
 
 * OWASP ZAP - https://www.zaproxy.org/download/
 * Scrapy - https://github.com/scrapy/scrapy
+* Selenium
+* Geckodriver, för firefox
+* Playwright
 
-# Setup
+# Setup/installation
 To Come
