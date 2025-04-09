@@ -5,6 +5,7 @@ import scrapy
 from scrapy_playwright.page import PageMethod
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+from parsel import Selector
 
 #from selenium import webdriver
 #from selenium.webdriver.firefox.options import Options
@@ -28,6 +29,7 @@ class ZAPSpider(scrapy.Spider):
         "PLAYWRIGHT_LAUNCH_OPTIONS" : {
                 "headless": True,
         },
+        "PLAYWRIGHT_RESTART_DISCONNECTED_BROWSER" : True,
         "CONCURRENT_REQUESTS": 1, #Problem med att få playwright att hantera flera request samtidigt därav max 1 concurrent request.
         "ROBOTSTXT_OBEY" : True,
         "FEED_EXPORT_ENCODING" : "utf-8",
@@ -37,17 +39,39 @@ class ZAPSpider(scrapy.Spider):
     def __init__(self, urls : list, *args, **kwargs):
         super(ZAPSpider, self).__init__(*args, **kwargs)
         self.urls = urls
-        self.result = []
+        self.entrypoints = []
 
     def start_requests(self):
         for url in self.urls:
-            yield scrapy.Request(url=url, callback=self.parse, meta={"playwright": True})
+            yield scrapy.Request(url=url, callback=self.parse, meta={
+                "playwright": True,
+                "playwright_page_methods": [
+                    PageMethod("wait_for_load_state", "networkidle")
+                    ]
+                })
 
     def parse(self, response):
-        page = response.url.split("/")[-2]
-        filename = f"quotes-{page}.html"
-        Path(filename).write_bytes(response.body)
-        self.result.append(response.body)
+        selector = Selector(text=response.text)
+
+        self.extract_urls(selector)
+
+        #Extrahera endpoints
+        self.find_forms(selector, response.url)
+
+    #Hämtar ut url:er inom samma domän för crawling.
+    def extract_urls(self, selector):
+        for url in selector.css("a::attr(href)").getall():
+            pass
+            
+    def find_forms(self, selector, url):
+        for form in selector.css("form"):
+            action = form.css("::attr(action)").get()
+
+            if "https://" or "http://" not in action:
+                action = url + action
+
+            self.entrypoints.append(action)
+
 
 def runspider(urls : list[str]):
     process = CrawlerProcess(get_project_settings())
@@ -57,7 +81,7 @@ def runspider(urls : list[str]):
     process.crawl(crawler, urls)
     process.start()
 
-    return crawler.spider.result
+    return crawler.spider.entrypoints
 
 
 """

@@ -14,7 +14,7 @@ class Integrator:
         self.crawler_result = runspider(self.urls)
 
     def attack(self):
-        pass
+        print(self.crawler_result)
 
     def analyze(self):
         pass
