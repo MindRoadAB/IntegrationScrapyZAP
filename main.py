@@ -9,7 +9,7 @@ from integration import Integrator
 def is_url(url):
     return validators.url(url)
 
-def check_arguments(urls):
+def check_arguments_url(urls):
     for url in urls:
         if is_url(url) is False:
             return False
@@ -20,12 +20,15 @@ if __name__ == "__main__":
 
     #Hanterar kommandoradsargument.
     parser = argparse.ArgumentParser()
-    parser.add_argument('url', nargs='+')
+
+    parser.add_argument("-u", "--urls", nargs="+", help="En eller flera URL:er att skanna", required=True)
+    parser.add_argument("-a", "--apikey", help="ZAP API-nyckel", required=True)
+
     arguments = parser.parse_args()
 
-    if check_arguments(arguments.url):
+    if check_arguments_url(arguments.urls):
         #Integrator ansvarar för hela processen.
-        integrator = Integrator(arguments.url)
+        integrator = Integrator(arguments.urls, arguments.apikey)
         integrator.execute()
     else:
-        print("Invalid argument present, not an URL.")
+        print("Felaktiga argument, kräver -u med url:er samt -a med API-key.")

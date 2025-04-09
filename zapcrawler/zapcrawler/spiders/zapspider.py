@@ -6,6 +6,7 @@ from scrapy_playwright.page import PageMethod
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from parsel import Selector
+from urllib.parse import urljoin
 
 #from selenium import webdriver
 #from selenium.webdriver.firefox.options import Options
@@ -67,8 +68,8 @@ class ZAPSpider(scrapy.Spider):
         for form in selector.css("form"):
             action = form.css("::attr(action)").get()
 
-            if "https://" or "http://" not in action:
-                action = url + action
+            if not action.startswith("http://") and not action.startswith("https://"):
+                action = urljoin(url, action)
 
             self.entrypoints.append(action)
 
