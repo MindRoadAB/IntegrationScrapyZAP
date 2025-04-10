@@ -6,7 +6,7 @@ from scrapy_playwright.page import PageMethod
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from parsel import Selector
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 #from selenium import webdriver
 #from selenium.webdriver.firefox.options import Options
@@ -18,6 +18,8 @@ class ZAPSpider(scrapy.Spider):
         "BOT_NAME" : "zapcrawler",
         "SPIDER_MODULES" : ["zapcrawler.spiders"],
         "NEWSPIDER_MODULE" : "zapcrawler.spiders",
+        "DEPTH_LIMIT" : 5,
+
         "DOWNLOAD_HANDLERS" : {
             "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
             "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
@@ -31,7 +33,7 @@ class ZAPSpider(scrapy.Spider):
                 "headless": True,
         },
         "PLAYWRIGHT_RESTART_DISCONNECTED_BROWSER" : True,
-        "CONCURRENT_REQUESTS": 1, #Problem med att få playwright att hantera flera request samtidigt därav max 1 concurrent request.
+        "CONCURRENT_REQUESTS": 256,
         "ROBOTSTXT_OBEY" : True,
         "FEED_EXPORT_ENCODING" : "utf-8",
         "USER_AGENT" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -39,39 +41,44 @@ class ZAPSpider(scrapy.Spider):
 
     def __init__(self, urls : list, *args, **kwargs):
         super(ZAPSpider, self).__init__(*args, **kwargs)
-        self.urls = urls
+        self.urls = urls.copy()
         self.entrypoints = []
+        self.visited_urls = urls.copy()
 
     def start_requests(self):
         for url in self.urls:
             yield scrapy.Request(url=url, callback=self.parse, meta={
-                "playwright": True,
-                "playwright_page_methods": [
-                    PageMethod("wait_for_load_state", "networkidle")
-                    ]
+                "playwright": True
                 })
 
     def parse(self, response):
         selector = Selector(text=response.text)
 
-        self.extract_urls(selector)
+        yield from self.extract_urls(selector, response.url)
 
         #Extrahera endpoints
         self.find_forms(selector, response.url)
 
     #Hämtar ut url:er inom samma domän för crawling.
-    def extract_urls(self, selector):
-        for url in selector.css("a::attr(href)").getall():
-            pass
+    def extract_urls(self, selector, base_url):
+        for rel_url in selector.css("a::attr(href)").getall():
+            entrypoint = urljoin_domain(base_url, rel_url)
+            self.add_entrypoint(base_url, entrypoint)
+            if ensure_valid_url(base_url, entrypoint) and entrypoint not in self.visited_urls:
+                self.visited_urls.append(entrypoint)
+                yield scrapy.Request(url=entrypoint, callback=self.parse, meta={
+                    "playwright": True
+                    })
             
-    def find_forms(self, selector, url):
+    def find_forms(self, selector, base_url):
         for form in selector.css("form"):
             action = form.css("::attr(action)").get()
+            entrypoint = urljoin_domain(base_url, action)
+            self.add_entrypoint(base_url, entrypoint)
 
-            if not action.startswith("http://") and not action.startswith("https://"):
-                action = urljoin(url, action)
-
-            self.entrypoints.append(action)
+    def add_entrypoint(self, base_url, entrypoint):
+        if ensure_valid_url(base_url, entrypoint):
+            self.entrypoints.append(entrypoint)
 
 
 def runspider(urls : list[str]):
@@ -84,6 +91,17 @@ def runspider(urls : list[str]):
 
     return crawler.spider.entrypoints
 
+def urljoin_domain(base_url, rel_url):
+    if rel_url is None or rel_url == "":
+        return None
+    else:
+        return rel_url if rel_url.startswith("http://") or rel_url.startswith("https://") else urljoin(base_url, rel_url)
+    
+def ensure_same_domain(url_one, url_two):
+    return True if urlparse(url_one).netloc == urlparse(url_two).netloc else False
+
+def ensure_valid_url(base_url, entrypoint):
+    return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
 
 """
 ,

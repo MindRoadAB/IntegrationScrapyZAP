@@ -11,23 +11,22 @@ class Integrator:
 
     def execute(self):
         self.crawl()
-        self.attack()
-        self.analyze()
+        #self.attack()
+        #self.analyze()
 
     def crawl(self):
         self.crawler_result = list(set(runspider(self.urls)))
+        
+        for res in self.crawler_result:
+            print("\n", res)
 
     def attack(self):
-        print(self.crawler_result)
-
-        #Titta in scan-policy
-
         self.crawler_result = ["https://public-firing-range.appspot.com/"]
 
         print("Utför aktiv attack.")
         for url in self.crawler_result:
             self.zap.urlopen(url)
-            scan = self.zap.ascan.scan(url=url)
+            scan = self.zap.ascan.scan(url=url, scanpolicyname="Injection")
             
             while (int(self.zap.ascan.status(scan)) < 100):
                 time.sleep(5)

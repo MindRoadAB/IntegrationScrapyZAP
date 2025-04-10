@@ -14,5 +14,6 @@ För att kunna köra projektet behövs ett antal program.
 To Come
 
 # Plan för det fortsatta arbetet
-* Skapa en scan-policy
-* Implementera att följa URL:er i crawler
+* Skapa en scan-policy - CHECK (Injection)
+* Implementera att följa URL:er i crawler - UNDER ARBETE
+* Bryta ut ZAP-funktioner i egen klass - UNDER ARBETE
