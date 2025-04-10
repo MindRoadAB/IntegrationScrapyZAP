@@ -18,9 +18,9 @@ To Come
 * Implementera att följa URL:er i crawler - CHECK
 * Bryta ut ZAP-funktioner i egen klass - CHECK
 * Lägga in funktionalitet för att dubbelkolla så inga felaktiga URL:er kommer tillbaka från crawler - CHECK
-* Lägga till flagga -m --mode för att kunna välja vilken sorts crawling som ska utföras - UNDER ARBETE
-* Lägga till flagga -r --requests för att ange maximala antalet concurrent requests - UNDER ARBETE
+* Lägga till flagga -m --mode för att kunna välja vilken sorts crawling som ska utföras - CHECK
 * Lägga till parsning och extraktion av mer än bara forms - UNDER ARBETE
 * Lägga till AJAX-hantering - UNDER ARBETE (STORT ARBETE)
-* VID TID!
+* VID TID! - Liten chans att detta hinns med
 * - Bryt ut alla URL-funktioner i egen modul
+* - Bättre felhantering av felaktiga argument i kommandorad

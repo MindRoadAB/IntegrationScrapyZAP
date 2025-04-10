@@ -3,8 +3,9 @@ from zap import Zap
 from urllib.parse import urlparse
 
 class Integrator:
-    def __init__(self, urls : list, apikey : str):
+    def __init__(self, urls, apikey, mode):
         self.seed_urls = urls
+        self.mode = mode
         self.crawler_result = []
         self.zap = Zap(apikey=apikey)
 
@@ -13,15 +14,16 @@ class Integrator:
         self.attack(confirmed_urls)
 
     def crawl(self):
-        self.crawler_result = list(set(runspider(self.seed_urls)))
+        self.crawler_result = list(set(runspider(self.seed_urls, self.mode)))
 
         return self.double_check_crawler_result()
 
     def attack(self, confirmed_urls):
         #self.zap.active_scan(confirmed_urls)
+        pass
 
     """
-    Funktionen ansvarar för att dubbelkolla så inga URL:er förekommer utanför angivna domän.
+    Funktionen ansvarar för att dubbelkolla så inga URL:er förekommer utanför angivna domäner.
     Utföra attacker på icke verifierade sidor är ett allvarligt övertramp.
     """
     def double_check_crawler_result(self):

@@ -16,6 +16,9 @@ def check_arguments_url(urls):
         
     return True
 
+def check_mode_argument(mode):
+    return True if mode == "classic" or mode == "ajax" or mode == "js" else False
+
 if __name__ == "__main__":
 
     #Hanterar kommandoradsargument.
@@ -23,12 +26,12 @@ if __name__ == "__main__":
 
     parser.add_argument("-u", "--urls", nargs="+", help="En eller flera URL:er att skanna", required=True)
     parser.add_argument("-a", "--apikey", help="ZAP API-nyckel", required=True)
+    parser.add_argument("-m", "--mode", help="Vilken crawlingmetod som används", required=False)
 
     arguments = parser.parse_args()
 
-    if check_arguments_url(arguments.urls):
-        #Integrator ansvarar för hela processen.
-        integrator = Integrator(arguments.urls, arguments.apikey)
+    if check_arguments_url(arguments.urls) and check_mode_argument(arguments.mode):
+        integrator = Integrator(arguments.urls, arguments.apikey, arguments.mode)
         integrator.execute()
     else:
-        print("Felaktiga argument, kräver -u med url:er samt -a med API-key.")
+        print("Felaktiga argument angivna.")

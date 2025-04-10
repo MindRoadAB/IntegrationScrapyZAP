@@ -39,17 +39,16 @@ class ZAPSpider(scrapy.Spider):
         "USER_AGENT" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     }
 
-    def __init__(self, urls : list, *args, **kwargs):
+    def __init__(self, urls, mode="classic", *args, **kwargs):
         super(ZAPSpider, self).__init__(*args, **kwargs)
         self.urls = urls.copy()
+        self.mode = mode
         self.entrypoints = []
         self.visited_urls = urls.copy()
 
     def start_requests(self):
         for url in self.urls:
-            yield scrapy.Request(url=url, callback=self.parse, meta={
-                "playwright": True
-                })
+            yield from self.crawl(url)
 
     def parse(self, response):
         selector = Selector(text=response.text)
@@ -66,9 +65,7 @@ class ZAPSpider(scrapy.Spider):
             self.add_entrypoint(base_url, entrypoint)
             if ensure_valid_url(base_url, entrypoint) and entrypoint not in self.visited_urls:
                 self.visited_urls.append(entrypoint)
-                yield scrapy.Request(url=entrypoint, callback=self.parse, meta={
-                    "playwright": True
-                    })
+                yield from self.crawl(entrypoint)
             
     def find_forms(self, selector, base_url):
         for form in selector.css("form"):
@@ -81,12 +78,32 @@ class ZAPSpider(scrapy.Spider):
             self.entrypoints.append(entrypoint)
 
 
-def runspider(urls : list[str]):
+    #Crawlermetoder
+    def crawl(self, url):
+        if self.mode == "classic":
+            yield from self.crawl_classic(url)
+        elif self.mode == "js":
+            yield from self.crawl_js(url)
+        elif self.mode == "ajax":
+            yield from self.crawl_ajax(url)
+
+    def crawl_classic(self, url):
+        yield scrapy.Request(url=url, callback=self.parse)
+
+    def crawl_js(self, url):
+        yield scrapy.Request(url=url, callback=self.parse, meta={
+            "playwright": True
+            })
+
+    def crawl_ajax(self):
+        pass
+
+def runspider(urls, mode):
     process = CrawlerProcess(get_project_settings())
 
     crawler = process.create_crawler(ZAPSpider)
 
-    process.crawl(crawler, urls)
+    process.crawl(crawler, urls, mode)
     process.start()
 
     return crawler.spider.entrypoints
