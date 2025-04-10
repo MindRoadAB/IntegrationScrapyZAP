@@ -12,3 +12,7 @@ För att kunna köra projektet behövs ett antal program.
 
 # Setup/installation
 To Come
+
+# Plan för det fortsatta arbetet
+* Skapa en scan-policy
+* Implementera att följa URL:er i crawler
