@@ -19,7 +19,7 @@ class Integrator:
         return self.double_check_crawler_result()
 
     def attack(self, confirmed_urls):
-        #self.zap.active_scan(confirmed_urls)
+        self.zap.active_scan(confirmed_urls)
         pass
 
     """
