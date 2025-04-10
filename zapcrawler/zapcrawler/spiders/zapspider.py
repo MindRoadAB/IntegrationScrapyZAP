@@ -102,28 +102,3 @@ def ensure_same_domain(url_one, url_two):
 
 def ensure_valid_url(base_url, entrypoint):
     return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
-
-"""
-,
-				playwright_include_page = True, 
-				playwright_page_methods =[PageMethod('wait_for_selector', 'div.quote')]
-"""
-
-"""
-#SELENIUM-START
-        #Kod under arbete
-        driver = webdriver.Firefox(options=setup_options_selenium())
-
-        driver.quit()
-        #SELENIUM-END
-
-#Här sätter användare upp sin egna options. 
-def setup_options_selenium():
-    options = webdriver.FirefoxOptions()
-    options.binary_location = "/usr/bin/firefox"
-    options.headless = False
-    options.add_argument("-profile")
-    options.add_argument('/home/simlu/snap/firefox/common/.mozilla/firefox/n6yfipfz.selenium_profile')
-
-    return options
-"""
