@@ -20,7 +20,6 @@ class Integrator:
 
     def attack(self, confirmed_urls):
         self.zap.active_scan(confirmed_urls)
-        pass
 
     """
     Funktionen ansvarar för att dubbelkolla så inga URL:er förekommer utanför angivna domäner.
