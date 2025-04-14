@@ -50,6 +50,45 @@ class ZAPSpider(scrapy.Spider):
         for url in self.urls:
             yield from self.crawl(url)
 
+    
+    #Crawlermetoder
+    def crawl(self, url):
+        if self.mode == "classic":
+            yield from self.crawl_classic(url)
+        elif self.mode == "js":
+            yield from self.crawl_js(url)
+        elif self.mode == "ajax":
+            yield from self.crawl_ajax(url)
+
+    def crawl_classic(self, url):
+        yield scrapy.Request(url=url, callback=self.parse)
+
+    def crawl_js(self, url):
+        yield scrapy.Request(
+            url=url,
+            callback=self.parse,
+            meta={
+                "playwright": True,
+                "playwright_page_methods" : [
+                    PageMethod("wait_for_load_state", "networkidle")
+                ]
+            }
+        )
+
+    def crawl_ajax(self, url):
+        yield scrapy.Request(
+            url=url,
+            callback=self.parse_ajax,
+            meta={
+                "playwright": True,
+                "playwright_include_page" : True,
+                "playwright_page_methods" : [
+                    PageMethod("wait_for_load_state", "networkidle")
+                ]
+            }
+        )
+
+    #Parsefunktioner
     def parse(self, response):
         selector = Selector(text=response.text)
 
@@ -57,6 +96,15 @@ class ZAPSpider(scrapy.Spider):
 
         #Extrahera endpoints
         self.find_forms(selector, response.url)
+
+    async def parse_ajax(self, response):
+        page = response.meta["playwright_page"]
+        await page.close()
+
+    #Scrapefunktioner
+    def add_entrypoint(self, base_url, entrypoint):
+        if ensure_valid_url(base_url, entrypoint):
+            self.entrypoints.append(entrypoint)
 
     #Hämtar ut url:er inom samma domän för crawling.
     def extract_urls(self, selector, base_url):
@@ -73,30 +121,7 @@ class ZAPSpider(scrapy.Spider):
             entrypoint = urljoin_domain(base_url, action)
             self.add_entrypoint(base_url, entrypoint)
 
-    def add_entrypoint(self, base_url, entrypoint):
-        if ensure_valid_url(base_url, entrypoint):
-            self.entrypoints.append(entrypoint)
-
-
-    #Crawlermetoder
-    def crawl(self, url):
-        if self.mode == "classic":
-            yield from self.crawl_classic(url)
-        elif self.mode == "js":
-            yield from self.crawl_js(url)
-        elif self.mode == "ajax":
-            yield from self.crawl_ajax(url)
-
-    def crawl_classic(self, url):
-        yield scrapy.Request(url=url, callback=self.parse)
-
-    def crawl_js(self, url):
-        yield scrapy.Request(url=url, callback=self.parse, meta={
-            "playwright": True
-            })
-
-    def crawl_ajax(self):
-        pass
+    #Stödfunktioner
 
 def runspider(urls, mode):
     process = CrawlerProcess(get_project_settings())
