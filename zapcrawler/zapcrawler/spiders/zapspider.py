@@ -51,7 +51,9 @@ class ZAPSpider(scrapy.Spider):
             yield from self.crawl(url)
 
     
-    #Crawlermetoder
+    """
+    Crawlerfunktioner
+    """
     def crawl(self, url):
         if self.mode == "classic":
             yield from self.crawl_classic(url)
@@ -88,7 +90,9 @@ class ZAPSpider(scrapy.Spider):
             }
         )
 
-    #Parsefunktioner
+    """
+    Parsefunktioner
+    """
     def parse(self, response):
         selector = Selector(text=response.text)
 
@@ -101,11 +105,21 @@ class ZAPSpider(scrapy.Spider):
         page = response.meta["playwright_page"]
         await page.close()
 
-    #Scrapefunktioner
-    def add_entrypoint(self, base_url, entrypoint):
-        if ensure_valid_url(base_url, entrypoint):
-            self.entrypoints.append(entrypoint)
+    """
+    Interaktionsfunktioner
+    """
+    def click_clickables(self):
+        pass
 
+    def login(self):
+        pass
+
+    def infinite_scroll(self):
+        pass
+
+    """
+    Scrapefunktioner
+    """
     #Hämtar ut url:er inom samma domän för crawling.
     def extract_urls(self, selector, base_url):
         for rel_url in selector.css("a::attr(href)").getall():
@@ -121,7 +135,17 @@ class ZAPSpider(scrapy.Spider):
             entrypoint = urljoin_domain(base_url, action)
             self.add_entrypoint(base_url, entrypoint)
 
-    #Stödfunktioner
+    """
+    Stödfunktioner
+    """
+    def add_entrypoint(self, base_url, entrypoint):
+        if ensure_valid_url(base_url, entrypoint):
+            self.entrypoints.append(entrypoint)
+
+
+"""
+Övrigafunktioner
+"""
 
 def runspider(urls, mode):
     process = CrawlerProcess(get_project_settings())
@@ -144,3 +168,15 @@ def ensure_same_domain(url_one, url_two):
 
 def ensure_valid_url(base_url, entrypoint):
     return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
+
+"""
+PLAN med ledande frågor.
+
+Hur ska jag hantera states (veta var jag har varit och inte)?
+    Svar: 
+
+Hur ska jag kunna lyssna på AJAX-förfrågningar
+    Svar:
+
+
+"""
