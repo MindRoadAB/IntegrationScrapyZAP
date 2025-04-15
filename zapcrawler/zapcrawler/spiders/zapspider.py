@@ -104,31 +104,96 @@ class ZAPSpider(scrapy.Spider):
 
     async def parse_ajax(self, response):
         page = response.meta["playwright_page"]
-        page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare för AJAX-anrop
-
-        clickable_elements = await find_clickables_from_page(page)
-
-        await self.click_clickables(page, clickable_elements)
+        page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
+        
+        await self.interact_with_page(page)        
 
         await page.close()
 
     """
     Interaktionsfunktioner
     """
-    async def click_clickables(self, page, clickable_elements):
-        for element in clickable_elements:
-            try:
-                if await element.is_visible() and await element.is_enabled():
-                    await element.click(timeout=500)
-                    html = await page.content()
-            except Exception as e:
-                pass
-
     def login(self):
         pass
 
     def infinite_scroll(self):
         pass
+
+    async def interact_with_page(self, page):
+        fillables = await self.find_fillables(page)
+        await self.fill_fillables(page, fillables)
+
+        clickable_elements = await self.find_clickables_from_page(page)
+        await self.click_clickables(page, clickable_elements)
+
+    async def find_fillables(self, page):
+        fillable_types = [
+            "input[type='text']",
+            "input[type='email']",
+            "input[type='search']",
+            "input[type='password']",
+            "input:not([type])",
+            "textarea",
+            "[contenteditable='true']"
+        ]
+
+        fillables = []
+        for selector in fillable_types:
+            elements = await page.query_selector_all(selector)
+            fillables.extend(elements)
+        
+        return fillables
+
+    async def fill_fillables(self, page, fillables):
+        text = "test"
+
+        for fillable in fillables:
+            try:
+                if await fillable.is_visible() and await fillable.is_enabled():
+                    await fillable.fill(text)
+            except Exception as e:
+                pass
+
+    async def find_clickables_from_page(self, page):
+        clickable_elements = []
+
+        buttons = await page.query_selector_all("button")
+        clickable_elements.extend(buttons)
+
+        role_buttons = await page.query_selector_all('[role="button"]')
+        clickable_elements.extend(role_buttons)
+
+        links = await page.query_selector_all("a")
+        clickable_elements.extend(links)
+
+        onclick_elements = await page.query_selector_all('[onclick]')
+        clickable_elements.extend(onclick_elements)
+
+        return clickable_elements
+
+    async def click_clickables(self, page, clickable_elements):
+        for element in clickable_elements:
+            try:
+                if await element.is_visible() and await element.is_enabled():
+                    #await page.evaluate("""
+                    #    window.__newElements = [];
+                    #    const observer = new MutationObserver(mutations => {
+                    #        for (const mutation of mutations) {
+                    #           for (const node of mutation.addedNodes) {
+                    #               if (node.nodeType === Node.ELEMENT_NODE) {
+                    #                   window.__newElements.push(node.outerHTML);
+                    #               }
+                    #            }
+                    #       }
+                    #   });
+                    #   observer.observe(document.body, { childList: true, subtree: true });
+                    #""")
+                    await element.click(timeout=500)
+
+                    #new_elements = await page.evaluate("window.__newElements")
+                    #print("\n", new_elements)
+            except Exception as e:
+                pass
 
     """
     Scrapefunktioner
@@ -190,17 +255,6 @@ def ensure_same_domain(url_one, url_two):
 
 def ensure_valid_url(base_url, entrypoint):
     return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
-
-async def find_clickables_from_page(page):
-    clickable_elements = []
-
-    buttons = await page.query_selector_all("button")
-    clickable_elements.extend(buttons)
-
-    role_buttons = await page.query_selector_all('[role="button"]')
-    clickable_elements.extend(role_buttons)
-
-    return clickable_elements
 
 """
 PLAN med ledande frågor.
