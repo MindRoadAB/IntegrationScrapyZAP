@@ -21,6 +21,9 @@ class Integrator:
     def attack(self, confirmed_urls):
         #self.zap.active_scan(confirmed_urls)
         print("SKIPPING...")
+        print("\n", "FOUND ENTRYPOINTS:")
+        for url in self.crawler_result:
+            print("\n", url)
 
     """
     Funktionen ansvarar för att dubbelkolla så inga URL:er förekommer utanför angivna domäner.

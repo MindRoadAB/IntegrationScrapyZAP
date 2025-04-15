@@ -7,6 +7,7 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from parsel import Selector
 from urllib.parse import urljoin, urlparse
+import asyncio
 
 #from selenium import webdriver
 #from selenium.webdriver.firefox.options import Options
@@ -30,7 +31,7 @@ class ZAPSpider(scrapy.Spider):
         "PLAYWRIGHT_BROWSER_TYPE" : 'firefox',
 
         "PLAYWRIGHT_LAUNCH_OPTIONS" : {
-                "headless": True,
+                "headless": False,
         },
         "PLAYWRIGHT_RESTART_DISCONNECTED_BROWSER" : True,
         "CONCURRENT_REQUESTS": 256,
@@ -103,13 +104,25 @@ class ZAPSpider(scrapy.Spider):
 
     async def parse_ajax(self, response):
         page = response.meta["playwright_page"]
+        page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare för AJAX-anrop
+
+        clickable_elements = await find_clickables_from_page(page)
+
+        await self.click_clickables(page, clickable_elements)
+
         await page.close()
 
     """
     Interaktionsfunktioner
     """
-    def click_clickables(self):
-        pass
+    async def click_clickables(self, page, clickable_elements):
+        for element in clickable_elements:
+            try:
+                if await element.is_visible() and await element.is_enabled():
+                    await element.click(timeout=500)
+                    html = await page.content()
+            except Exception as e:
+                pass
 
     def login(self):
         pass
@@ -142,6 +155,15 @@ class ZAPSpider(scrapy.Spider):
         if ensure_valid_url(base_url, entrypoint):
             self.entrypoints.append(entrypoint)
 
+    async def handle_response_ajax(self, response):
+        url = response.url
+        try:
+            body = await response.text()
+            if "application/json" in response.headers.get("content-type", ""):
+                self.entrypoints.append(url)
+        except Exception as e:
+            pass
+
 
 """
 Övrigafunktioner
@@ -169,10 +191,28 @@ def ensure_same_domain(url_one, url_two):
 def ensure_valid_url(base_url, entrypoint):
     return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
 
+async def find_clickables_from_page(page):
+    clickable_elements = []
+
+    buttons = await page.query_selector_all("button")
+    clickable_elements.extend(buttons)
+
+    role_buttons = await page.query_selector_all('[role="button"]')
+    clickable_elements.extend(role_buttons)
+
+    return clickable_elements
+
 """
 PLAN med ledande frågor.
 
+Vilka interaktionsfunktioner behöver jag?
+    Svar:
+        Klicka  - NOT DONE
+        login   - NOT DONE
+        scrolla - NOT DONE
+
 Hur ska jag hantera states (veta var jag har varit och inte)?
+    Problembeskrivning: Om jag inte kan tracka detta så är det stor risk för onödigt arbete samt oändliga loopar.
     Svar: 
 
 Hur ska jag kunna lyssna på AJAX-förfrågningar
