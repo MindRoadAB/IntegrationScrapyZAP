@@ -46,6 +46,7 @@ class ZAPSpider(scrapy.Spider):
         self.mode = mode
         self.entrypoints = []
         self.visited_urls = urls.copy()
+        self.max_depth = 5
 
     def start_requests(self):
         for url in self.urls:
@@ -106,7 +107,8 @@ class ZAPSpider(scrapy.Spider):
         page = response.meta["playwright_page"]
         page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
         
-        await self.interact_with_page(page)        
+        current_depth = 0
+        await self.interact_with_page(page, current_depth, self.max_depth)        
 
         await page.close()
 
@@ -119,7 +121,11 @@ class ZAPSpider(scrapy.Spider):
     def infinite_scroll(self):
         pass
 
-    async def interact_with_page(self, page):
+    async def interact_with_page(self, page, depth, max_depth):
+        #Fullösning för att undvika oändlig rekursion
+        if depth > max_depth:
+            return
+
         fillables = await self.find_fillables(page)
         await self.fill_fillables(page, fillables)
 
@@ -157,6 +163,8 @@ class ZAPSpider(scrapy.Spider):
     async def find_clickables_from_page(self, page):
         clickable_elements = []
 
+        domain = "http://localhost:3000/#/" #FLYTTA TILL KLASSVARIABEL
+
         buttons = await page.query_selector_all("button")
         clickable_elements.extend(buttons)
 
@@ -164,7 +172,14 @@ class ZAPSpider(scrapy.Spider):
         clickable_elements.extend(role_buttons)
 
         links = await page.query_selector_all("a")
-        clickable_elements.extend(links)
+        for link in links:
+            href = await link.get_attribute("href")
+            if href is None:
+                clickable_elements.append(link)
+            else:
+                parsed_href = urlparse(href)
+                if not parsed_href.netloc or parsed_href.netloc.endswith(domain):
+                    clickable_elements.append(link)
 
         onclick_elements = await page.query_selector_all('[onclick]')
         clickable_elements.extend(onclick_elements)
@@ -189,6 +204,7 @@ class ZAPSpider(scrapy.Spider):
                     #   observer.observe(document.body, { childList: true, subtree: true });
                     #""")
                     await element.click(timeout=500)
+                    await page.wait_for_timeout(800)
 
                     #new_elements = await page.evaluate("window.__newElements")
                     #print("\n", new_elements)
