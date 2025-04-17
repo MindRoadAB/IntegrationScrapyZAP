@@ -8,6 +8,7 @@ from scrapy.utils.project import get_project_settings
 from parsel import Selector
 from urllib.parse import urljoin, urlparse
 import asyncio
+from collections import deque
 
 #from selenium import webdriver
 #from selenium.webdriver.firefox.options import Options
@@ -106,9 +107,12 @@ class ZAPSpider(scrapy.Spider):
     async def parse_ajax(self, response):
         page = response.meta["playwright_page"]
         page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
-        
+        await self.mutationobserver_setup(page)
+
+        interactive_elements_dict = await self.find_all_interactive_elements(page)
+
         current_depth = 0
-        await self.interact_with_page(page, current_depth, self.max_depth)        
+        await self.interact_with_page(page, interactive_elements_dict, current_depth, self.max_depth)        
 
         await page.close()
 
@@ -121,16 +125,22 @@ class ZAPSpider(scrapy.Spider):
     def infinite_scroll(self):
         pass
 
-    async def interact_with_page(self, page, depth, max_depth):
+    async def find_all_interactive_elements(self, page):
+        interactive_elements_dict = {}
+
+        interactive_elements_dict["fillables"] = await self.find_fillables(page)
+        interactive_elements_dict["clickables"] = await self.find_clickables_from_page(page)
+
+        return interactive_elements_dict
+
+    async def interact_with_page(self, page, interactive_elements_dict, depth, max_depth):
         #Fullösning för att undvika oändlig rekursion
         if depth > max_depth:
             return
+        
+        await self.fill_fillables(page, interactive_elements_dict["fillables"])
+        await self.click_clickables(page, interactive_elements_dict["clickables"])
 
-        fillables = await self.find_fillables(page)
-        await self.fill_fillables(page, fillables)
-
-        clickable_elements = await self.find_clickables_from_page(page)
-        await self.click_clickables(page, clickable_elements)
 
     async def find_fillables(self, page):
         fillable_types = [
@@ -143,7 +153,7 @@ class ZAPSpider(scrapy.Spider):
             "[contenteditable='true']"
         ]
 
-        fillables = []
+        fillables = deque()
         for selector in fillable_types:
             elements = await page.query_selector_all(selector)
             fillables.extend(elements)
@@ -153,7 +163,9 @@ class ZAPSpider(scrapy.Spider):
     async def fill_fillables(self, page, fillables):
         text = "test"
 
-        for fillable in fillables:
+        while fillables:
+            fillable = fillables.popleft()
+
             try:
                 if await fillable.is_visible() and await fillable.is_enabled():
                     await fillable.fill(text)
@@ -161,9 +173,9 @@ class ZAPSpider(scrapy.Spider):
                 pass
 
     async def find_clickables_from_page(self, page):
-        clickable_elements = []
+        clickable_elements = deque()
 
-        domain = "http://localhost:3000/#/" #FLYTTA TILL KLASSVARIABEL
+        domain = "http://localhost:3000/" #FLYTTA TILL KLASSVARIABEL
 
         buttons = await page.query_selector_all("button")
         clickable_elements.extend(buttons)
@@ -177,8 +189,10 @@ class ZAPSpider(scrapy.Spider):
             if href is None:
                 clickable_elements.append(link)
             else:
-                parsed_href = urlparse(href)
-                if not parsed_href.netloc or parsed_href.netloc.endswith(domain):
+                abs_url = urljoin(page.url, href)
+                parsed_url = urlparse(abs_url)
+                
+                if parsed_url.netloc == domain:
                     clickable_elements.append(link)
 
         onclick_elements = await page.query_selector_all('[onclick]')
@@ -187,29 +201,31 @@ class ZAPSpider(scrapy.Spider):
         return clickable_elements
 
     async def click_clickables(self, page, clickable_elements):
-        for element in clickable_elements:
-            try:
-                if await element.is_visible() and await element.is_enabled():
-                    #await page.evaluate("""
-                    #    window.__newElements = [];
-                    #    const observer = new MutationObserver(mutations => {
-                    #        for (const mutation of mutations) {
-                    #           for (const node of mutation.addedNodes) {
-                    #               if (node.nodeType === Node.ELEMENT_NODE) {
-                    #                   window.__newElements.push(node.outerHTML);
-                    #               }
-                    #            }
-                    #       }
-                    #   });
-                    #   observer.observe(document.body, { childList: true, subtree: true });
-                    #""")
-                    await element.click(timeout=500)
-                    await page.wait_for_timeout(800)
+        loops = 0
+        max_loops = 50
 
-                    #new_elements = await page.evaluate("window.__newElements")
-                    #print("\n", new_elements)
+        while clickable_elements and loops < max_loops:
+            loops += 1
+            element = clickable_elements.popleft()
+
+            try:
+                #if await element.is_visible() and  await element.is_enabled() and await element.bounding_box():
+                    #print("\nVALBART: ", element, "\n")
+                    #await element.scroll_into_view_if_needed()
+                    await element.click(timeout=750)
+                    await page.wait_for_load_state("load")            
+                    await page.wait_for_load_state("networkidle")
+                    print("\nKNAPP TRYCKT: ", element)
+
+                    new_elements = await self.get_new_elements(page)
+                    test = await self.find_clickables_from_page(new_elements)
+                    print("\nNya :", test, "\n")
+                #else:
+                    #print("\nINTE VALBRT: ", element, "\n")
+                    #clickable_elements.append(element)
             except Exception as e:
-                pass
+                print("\nCATCH: ", e)
+                clickable_elements.append(element)
 
     """
     Scrapefunktioner
@@ -244,6 +260,39 @@ class ZAPSpider(scrapy.Spider):
                 self.entrypoints.append(url)
         except Exception as e:
             pass
+
+    async def mutationobserver_setup(self, page):
+        await page.evaluate("""
+            () => {
+                window.__newElements = [];
+                if (window.__observer) window.__observer.disconnect();
+                window.__observer = new MutationObserver(mutations => {
+                    for (const mutation of mutations) {
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                window.__newElements.push(node);
+                            }
+                        }
+                    }
+                });
+                window.__observer.observe(document.body, { childList: true, subtree: true });
+            }
+            """)
+        
+    async def get_new_elements(self, page):
+        return await page.evaluate("""
+            () => {
+                const nodes = window.__newElements || [];
+                const results = [];
+                for (const el of nodes) {
+                    if (el.outerHTML) {
+                        results.push({ html: el.outerHTML, tag: el.tagName, text: el.innerText });
+                    }
+                }
+                window.__newElements = [];
+                return results;
+            }
+            """)
 
 
 """
@@ -288,5 +337,17 @@ Hur ska jag hantera states (veta var jag har varit och inte)?
 Hur ska jag kunna lyssna på AJAX-förfrågningar
     Svar:
 
+Antecknade problem
+* - inte trycker på element som är aktiva, behöver göra en check
+* - Hitta vilka element som är klickabara
+* - Säkerställa så att man inte följer länkar till andra sidor utanför domän
+* - Måste lyssna på nätverket för att plock aupp AJAX-anrop
+* - Klicka på element i rätt ordning
+* - Upptäcka hur DOM:en eventuellt ändras efter ett klick, hämta dessa nya element och endast klicka på dem
+* - Hålla koll på state så man inte gör samma sak flera gångar
+    
 
+* - Crawling A JAX -Based Web Applications through Dynamic Analysis of User Interface State Changes
+* - Crawling Rich Internet Applications: The State of the Art
+* - A Comparative Study of Web Application Security Parameters: Current Trends and Future Directions
 """
