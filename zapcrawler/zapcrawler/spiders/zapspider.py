@@ -46,6 +46,7 @@ class ZAPSpider(scrapy.Spider):
         self.urls = urls.copy()
         self.mode = mode
         self.entrypoints = []
+        self.current_state_elements = []
         self.visited_urls = urls.copy()
         self.max_depth = 5
 
@@ -173,59 +174,38 @@ class ZAPSpider(scrapy.Spider):
                 pass
 
     async def find_clickables_from_page(self, page):
-        clickable_elements = deque()
+        selectors = ["button", '[role="button"]', "a", "[onclick]"]
+        clickable_elements = []
 
-        domain = "http://localhost:3000/" #FLYTTA TILL KLASSVARIABEL
+        for selector in selectors:
+            locs = page.locator(selector)
+            count = await locs.count()
+            for i in range(count):
+                clickable_elements.append(locs.nth(i))
 
-        buttons = await page.query_selector_all("button")
-        clickable_elements.extend(buttons)
-
-        role_buttons = await page.query_selector_all('[role="button"]')
-        clickable_elements.extend(role_buttons)
-
-        links = await page.query_selector_all("a")
-        for link in links:
-            href = await link.get_attribute("href")
-            if href is None:
-                clickable_elements.append(link)
-            else:
-                abs_url = urljoin(page.url, href)
-                parsed_url = urlparse(abs_url)
-                
-                if parsed_url.netloc == domain:
-                    clickable_elements.append(link)
-
-        onclick_elements = await page.query_selector_all('[onclick]')
-        clickable_elements.extend(onclick_elements)
+        self.current_state_elements = clickable_elements.copy()
 
         return clickable_elements
 
     async def click_clickables(self, page, clickable_elements):
         loops = 0
         max_loops = 50
+        clickable_elements_deque = deque(clickable_elements)
 
-        while clickable_elements and loops < max_loops:
+        while clickable_elements_deque and loops < max_loops:
             loops += 1
-            element = clickable_elements.popleft()
+            element = clickable_elements_deque.popleft()
 
             try:
-                #if await element.is_visible() and  await element.is_enabled() and await element.bounding_box():
-                    #print("\nVALBART: ", element, "\n")
-                    #await element.scroll_into_view_if_needed()
-                    await element.click(timeout=750)
-                    await page.wait_for_load_state("load")            
-                    await page.wait_for_load_state("networkidle")
-                    print("\nKNAPP TRYCKT: ", element)
+                await element.click(timeout=750)    
+                await page.wait_for_load_state("networkidle")
+                print("\nKNAPP TRYCKT: ", element)
 
-                    new_elements = await self.get_new_elements(page)
-                    test = await self.find_clickables_from_page(new_elements)
-                    print("\nNya :", test, "\n")
-                #else:
-                    #print("\nINTE VALBRT: ", element, "\n")
-                    #clickable_elements.append(element)
             except Exception as e:
                 print("\nCATCH: ", e)
-                clickable_elements.append(element)
+                clickable_elements_deque.append(element)
+
+        self.current_state_elements = []
 
     """
     Scrapefunktioner
