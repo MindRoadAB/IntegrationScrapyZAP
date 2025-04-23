@@ -8,6 +8,7 @@ from scrapy.utils.project import get_project_settings
 from parsel import Selector
 from urllib.parse import urljoin, urlparse
 import asyncio
+import time
 from collections import deque
 
 #from selenium import webdriver
@@ -111,9 +112,10 @@ class ZAPSpider(scrapy.Spider):
         await self.mutationobserver_setup(page)
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
+        self.current_state_elements = interactive_elements_dict["clickables"].copy()
 
-        current_depth = 0
-        await self.interact_with_page(page, interactive_elements_dict, current_depth, self.max_depth)        
+        current_depth = 1
+        await self.interact_with_page(page, interactive_elements_dict, current_depth)        
 
         await page.close()
 
@@ -130,17 +132,18 @@ class ZAPSpider(scrapy.Spider):
         interactive_elements_dict = {}
 
         interactive_elements_dict["fillables"] = await self.find_fillables(page)
-        interactive_elements_dict["clickables"] = await self.find_clickables_from_page(page)
+        body_element = page.locator("body *:not(style)")
+        interactive_elements_dict["clickables"] = await self.find_clickables_from_page(body_element)
 
         return interactive_elements_dict
 
-    async def interact_with_page(self, page, interactive_elements_dict, depth, max_depth):
+    async def interact_with_page(self, page, interactive_elements_dict, depth):
         #Fullösning för att undvika oändlig rekursion
-        if depth > max_depth:
+        if depth > self.max_depth:
             return
         
-        await self.fill_fillables(page, interactive_elements_dict["fillables"])
-        await self.click_clickables(page, interactive_elements_dict["clickables"])
+        #await self.fill_fillables(page, interactive_elements_dict["fillables"])
+        await self.click_clickables(page, depth, interactive_elements_dict["clickables"])
 
 
     async def find_fillables(self, page):
@@ -174,7 +177,7 @@ class ZAPSpider(scrapy.Spider):
                 pass
 
     async def find_clickables_from_page(self, page):
-        selectors = ["button", '[role="button"]', "a", "[onclick]"]
+        selectors = ["button", '[role="button"]', "a", "[onclick]", '[aria-label="Close Dialog"]']
         clickable_elements = []
 
         for selector in selectors:
@@ -183,11 +186,9 @@ class ZAPSpider(scrapy.Spider):
             for i in range(count):
                 clickable_elements.append(locs.nth(i))
 
-        self.current_state_elements = clickable_elements.copy()
-
         return clickable_elements
 
-    async def click_clickables(self, page, clickable_elements):
+    async def click_clickables(self, page, depth, clickable_elements):
         loops = 0
         max_loops = 50
         clickable_elements_deque = deque(clickable_elements)
@@ -197,12 +198,24 @@ class ZAPSpider(scrapy.Spider):
             element = clickable_elements_deque.popleft()
 
             try:
+                print("\nelement: ", element, " depth: ", depth)
                 await element.click(timeout=750)    
                 await page.wait_for_load_state("networkidle")
-                print("\nKNAPP TRYCKT: ", element)
+
+                dialog = page.locator('body [role="dialog"]')
+                if dialog is not None:
+                    print("\nDIALOG: ", dialog)
+                    test = dialog.locator('[aria-label="Close Dialog"]')
+                    print("\nantal klickabara i dialog: ", test)
+                    await self.interact_with_page(page, {"clickables" : [test]}, (depth+1))
+
+                #new_clickable_elements = await self.find_clickables_from_page(page)
+
+                #await self.interact_with_page(page, (depth+1), {"clickables" : new_clickable_elements})
 
             except Exception as e:
-                print("\nCATCH: ", e)
+                #print("\nERROR : ", e)
+                await page.wait_for_load_state("networkidle")
                 clickable_elements_deque.append(element)
 
         self.current_state_elements = []
