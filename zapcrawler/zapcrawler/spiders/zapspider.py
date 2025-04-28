@@ -198,23 +198,17 @@ class ZAPSpider(scrapy.Spider):
             element = clickable_elements_deque.popleft()
 
             try:
-                print("\nelement: ", element, " depth: ", depth)
                 await element.click(timeout=750)    
                 await page.wait_for_load_state("networkidle")
 
-                dialog = page.locator('body [role="dialog"]')
-                if dialog is not None:
-                    print("\nDIALOG: ", dialog)
-                    test = dialog.locator('[aria-label="Close Dialog"]')
-                    print("\nantal klickabara i dialog: ", test)
-                    await self.interact_with_page(page, {"clickables" : [test]}, (depth+1))
+                new_elements = await self.get_new_elements(page)
+                xpath_strings = extract_interactive_xpath_string(new_elements)
+                new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
 
-                #new_clickable_elements = await self.find_clickables_from_page(page)
-
-                #await self.interact_with_page(page, (depth+1), {"clickables" : new_clickable_elements})
+                if len(new_clickables) > 0:
+                    await self.interact_with_page(page, {"clickables" : new_clickables}, (depth+1))
 
             except Exception as e:
-                #print("\nERROR : ", e)
                 await page.wait_for_load_state("networkidle")
                 clickable_elements_deque.append(element)
 
@@ -275,17 +269,39 @@ class ZAPSpider(scrapy.Spider):
     async def get_new_elements(self, page):
         return await page.evaluate("""
             () => {
+                function findClickableElements(root) {
+                    const clickable = [];
+                    const elements = root.querySelectorAll('*'); // alla barn
+
+                    for (const el of elements) {
+                        if (
+                            el.tagName.toLowerCase() === 'button' ||                            
+                            el.getAttribute('role') === 'button' ||
+                            el.hasAttribute('onclick') ||
+                            el.getAttribute('aria-label') === 'Close Dialog'
+                        ) {
+                            clickable.push({
+                                html: el.outerHTML,
+                                tag: el.tagName,
+                                text: el.innerText
+                            });
+                        }
+                    }
+                    return clickable;
+                }
+
                 const nodes = window.__newElements || [];
                 const results = [];
-                for (const el of nodes) {
-                    if (el.outerHTML) {
-                        results.push({ html: el.outerHTML, tag: el.tagName, text: el.innerText });
-                    }
+
+                for (const node of nodes) {
+                    results.push(...findClickableElements(node));  // traversera varje node
                 }
-                window.__newElements = [];
+
+                window.__newElements = []; // nollställ som vanligt
                 return results;
             }
-            """)
+        """)
+    #(el.tagName.toLowerCase() === 'a' && el.hasAttribute('href')) ||
 
 
 """
@@ -313,6 +329,38 @@ def ensure_same_domain(url_one, url_two):
 
 def ensure_valid_url(base_url, entrypoint):
     return entrypoint is not None and ensure_same_domain(base_url, entrypoint)
+
+def extract_interactive_xpath_string(elements):
+    xpath_strings = set()
+    
+    for element in elements:
+        selector = Selector(text=element['html'])
+
+        # Scrapy Selector sätter detta i HTML-trädet (<html><body>...</body></html>) så vi hämtar ut det faktiskt elementet
+        selector_element = selector.xpath('//body/*[1]')[0]
+        
+        tag = selector_element.root.tag
+        xpath_string = f'//{tag}'
+
+        classes = selector_element.root.attrib.get('class')
+        if classes:
+            xpath_string += f'[contains(@class, "{classes.split()[0]}")]'
+
+        for attr, value in selector_element.root.attrib.items():
+            if attr != 'class':
+                xpath_string += f'[@{attr}="{value}"]'
+
+        xpath_strings.add(xpath_string)
+
+    return list(xpath_strings)
+
+def acquire_page_locators_from_xpath(xpath_strings, page):
+    list_of_locators = []
+
+    for xpath_string in xpath_strings:
+        list_of_locators.append(page.locator(xpath_string))
+
+    return list_of_locators
 
 """
 PLAN med ledande frågor.
