@@ -110,7 +110,7 @@ class ZAPSpider(scrapy.Spider):
         interactive_elements_dict = await self.find_all_interactive_elements(page)
 
         current_depth = 1
-        await self.interact_with_page(page, interactive_elements_dict, current_depth)        
+        await self.interact_with_page(page, interactive_elements_dict, current_depth)
 
         await page.close()
 
@@ -185,8 +185,9 @@ class ZAPSpider(scrapy.Spider):
 
     async def click_clickables(self, page, depth, clickable_elements):
         loops = 0
-        overlay_exist = has_overlay(clickable_elements)
-        overlay_element, clickable_elements = remove_overlay_from_list(clickable_elements)
+        overlay_exist = await has_overlay(clickable_elements)
+        if overlay_exist:
+            overlay_element, clickable_elements = await remove_overlay_from_list(clickable_elements)
 
         clickable_elements_deque = deque(clickable_elements)
 
@@ -200,6 +201,9 @@ class ZAPSpider(scrapy.Spider):
                     await page.wait_for_load_state("networkidle")
 
                     new_elements = await self.get_new_elements(page)
+                    print("\nNEW")
+                    for el in new_elements:
+                        print("\nEL: ", el)
                     xpath_strings = extract_interactive_xpath_string(new_elements)
                     new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
 
@@ -209,7 +213,6 @@ class ZAPSpider(scrapy.Spider):
                     clickable_elements_deque.append(element)
 
             except Exception as e:
-                print("\nElement: ", element, "\nError: ", e)
                 await page.wait_for_load_state("networkidle")
                 clickable_elements_deque.append(element)
 
@@ -255,25 +258,44 @@ class ZAPSpider(scrapy.Spider):
             () => {
                 window.__newElements = [];
                 if (window.__observer) window.__observer.disconnect();
+
                 window.__observer = new MutationObserver(mutations => {
                     for (const mutation of mutations) {
-                        for (const node of mutation.addedNodes) {
-                            if (node.nodeType === Node.ELEMENT_NODE) {
-                                window.__newElements.push(node);
+                        const target = mutation.target;
+
+                        if (mutation.type === "childList") {
+                            for (const node of mutation.addedNodes) {
+                                if (node.nodeType === Node.ELEMENT_NODE) {
+                                    window.__newElements.push(node);
+                                }
                             }
+                        }
+
+                        if (
+                            mutation.type === "attributes" &&
+                            target.tagName.toLowerCase() === "mat-sidenav" &&
+                            mutation.attributeName === "class"
+                        ) {                            
+                            window.__newElements.push(target);
                         }
                     }
                 });
-                window.__observer.observe(document.body, { childList: true, subtree: true });
+
+                window.__observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ["class"]
+                });
             }
-            """)
+        """)
         
     async def get_new_elements(self, page):
         return await page.evaluate("""
             () => {
                 function findClickableElements(root) {
                     const clickable = [];
-                    const elements = root.querySelectorAll('*'); // alla barn
+                    const elements = root.querySelectorAll('*');
 
                     for (const el of elements) {
                         if (
@@ -291,15 +313,33 @@ class ZAPSpider(scrapy.Spider):
                     }
                     return clickable;
                 }
+                                   
+                function findSideNav(node) {
+                    const results = [];
+                    const sidenavs = node.querySelectorAll('mat-sidenav');
+                                   
+                    for (const el of sidenavs) {                                   
+                        if (el.classList.contains('mat-drawer-opened')) {
+                            results.push({
+                                html: el.outerHTML,
+                                tag: el.tagName,
+                                text: el.innerText
+                            });
+                        }
+                    }
+                    
+                    return results;
+                }
 
                 const nodes = window.__newElements || [];
                 const results = [];
 
                 for (const node of nodes) {
-                    results.push(...findClickableElements(node));  // traversera varje node
+                    results.push(...findClickableElements(node));
+                    results.push(...findSideNav(node));
                 }
 
-                window.__newElements = []; // nollställ som vanligt
+                window.__newElements = [];
                 return results;
             }
         """)
@@ -366,16 +406,26 @@ def acquire_page_locators_from_xpath(xpath_strings, page):
 
     return list_of_locators
 
-def has_overlay(list_of_elements):
+async def has_overlay(list_of_elements):
+    for element in list_of_elements:
+        if await element.first.evaluate("el => el.tagName.toLowerCase() === 'mat-sidenav'"):
+            return True
+
     return False
 
-def remove_overlay_from_list(list_of_elements):
+async def remove_overlay_from_list(list_of_elements):
     overlay_element = 0
+
+    for i, element in enumerate(list_of_elements):
+        is_overlay = await element.first.evaluate("el => el.tagName.toLowerCase() === 'mat-sidenav'")
+        if is_overlay:
+            overlay_element = list_of_elements.pop(i)
+            break
 
     return overlay_element, list_of_elements
 
 def close_overlay(overlay_element):
-    pass
+    print("\nOVERLAY: ", overlay_element)
 
 """
 PLAN med ledande frågor.
