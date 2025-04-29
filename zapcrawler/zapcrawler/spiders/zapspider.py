@@ -11,9 +11,6 @@ import asyncio
 import time
 from collections import deque
 
-#from selenium import webdriver
-#from selenium.webdriver.firefox.options import Options
-
 class ZAPSpider(scrapy.Spider):
     name = "zapspider"
 
@@ -47,7 +44,6 @@ class ZAPSpider(scrapy.Spider):
         self.urls = urls.copy()
         self.mode = mode
         self.entrypoints = []
-        self.current_state_elements = []
         self.visited_urls = urls.copy()
         self.max_depth = 5
 
@@ -112,7 +108,6 @@ class ZAPSpider(scrapy.Spider):
         await self.mutationobserver_setup(page)
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
-        self.current_state_elements = interactive_elements_dict["clickables"].copy()
 
         current_depth = 1
         await self.interact_with_page(page, interactive_elements_dict, current_depth)        
@@ -190,29 +185,36 @@ class ZAPSpider(scrapy.Spider):
 
     async def click_clickables(self, page, depth, clickable_elements):
         loops = 0
-        max_loops = 50
+        overlay_exist = has_overlay(clickable_elements)
+        overlay_element, clickable_elements = remove_overlay_from_list(clickable_elements)
+
         clickable_elements_deque = deque(clickable_elements)
 
-        while clickable_elements_deque and loops < max_loops:
+        while clickable_elements_deque and loops < (len(clickable_elements_deque) * 3):
             loops += 1
             element = clickable_elements_deque.popleft()
 
             try:
-                await element.click(timeout=750)    
-                await page.wait_for_load_state("networkidle")
+                if await element.is_visible() and await element.is_enabled():
+                    await element.click(timeout=750)    
+                    await page.wait_for_load_state("networkidle")
 
-                new_elements = await self.get_new_elements(page)
-                xpath_strings = extract_interactive_xpath_string(new_elements)
-                new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
+                    new_elements = await self.get_new_elements(page)
+                    xpath_strings = extract_interactive_xpath_string(new_elements)
+                    new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
 
-                if len(new_clickables) > 0:
-                    await self.interact_with_page(page, {"clickables" : new_clickables}, (depth+1))
+                    if len(new_clickables) > 0:
+                        await self.interact_with_page(page, {"clickables" : new_clickables}, (depth+1))
+                else:
+                    clickable_elements_deque.append(element)
 
             except Exception as e:
+                print("\nElement: ", element, "\nError: ", e)
                 await page.wait_for_load_state("networkidle")
                 clickable_elements_deque.append(element)
 
-        self.current_state_elements = []
+        if overlay_exist:
+            close_overlay(overlay_element)
 
     """
     Scrapefunktioner
@@ -336,7 +338,7 @@ def extract_interactive_xpath_string(elements):
     for element in elements:
         selector = Selector(text=element['html'])
 
-        # Scrapy Selector sätter detta i HTML-trädet (<html><body>...</body></html>) så vi hämtar ut det faktiskt elementet
+        # Scrapy Selector sätter detta i HTML-trädet (<html><body>...</body></html>) så vi hämtar ut det faktiska elementet
         selector_element = selector.xpath('//body/*[1]')[0]
         
         tag = selector_element.root.tag
@@ -357,10 +359,23 @@ def extract_interactive_xpath_string(elements):
 def acquire_page_locators_from_xpath(xpath_strings, page):
     list_of_locators = []
 
+    xpath_strings.sort(key=lambda x: 'close-dialog' in x) #Ser till så att close-dialog alltid trycks sist.
+
     for xpath_string in xpath_strings:
         list_of_locators.append(page.locator(xpath_string))
 
     return list_of_locators
+
+def has_overlay(list_of_elements):
+    return False
+
+def remove_overlay_from_list(list_of_elements):
+    overlay_element = 0
+
+    return overlay_element, list_of_elements
+
+def close_overlay(overlay_element):
+    pass
 
 """
 PLAN med ledande frågor.
