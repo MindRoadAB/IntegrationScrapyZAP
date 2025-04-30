@@ -104,6 +104,7 @@ class ZAPSpider(scrapy.Spider):
 
     async def parse_ajax(self, response):
         page = response.meta["playwright_page"]
+        page.on("console", lambda msg: print(f"[console] {msg.type}: {msg.text}"))
         page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
         await self.mutationobserver_setup(page)
 
@@ -199,11 +200,12 @@ class ZAPSpider(scrapy.Spider):
                 if await element.is_visible() and await element.is_enabled():
                     await element.click(timeout=750)    
                     await page.wait_for_load_state("networkidle")
+                    await page.wait_for_load_state("domcontentloaded")
 
                     new_elements = await self.get_new_elements(page)
-                    print("\nNEW")
+                    """print("\nNEW")
                     for el in new_elements:
-                        print("\nEL: ", el)
+                        print("\nEL: ", el)"""
                     xpath_strings = extract_interactive_xpath_string(new_elements)
                     new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
 
@@ -214,10 +216,11 @@ class ZAPSpider(scrapy.Spider):
 
             except Exception as e:
                 await page.wait_for_load_state("networkidle")
+                await page.wait_for_load_state("domcontentloaded")
                 clickable_elements_deque.append(element)
 
         if overlay_exist:
-            close_overlay(overlay_element)
+            await close_overlay(page, overlay_element)
 
     """
     Scrapefunktioner
@@ -273,9 +276,10 @@ class ZAPSpider(scrapy.Spider):
 
                         if (
                             mutation.type === "attributes" &&
-                            target.tagName.toLowerCase() === "mat-sidenav" &&
-                            mutation.attributeName === "class"
-                        ) {                            
+                            target.classList.contains("mat-drawer") &&
+                            target.classList.contains("mat-sidenav") &&
+                            target.classList.contains("mat-drawer-opened")
+                        ) {
                             window.__newElements.push(target);
                         }
                     }
@@ -285,7 +289,7 @@ class ZAPSpider(scrapy.Spider):
                     childList: true,
                     subtree: true,
                     attributes: true,
-                    attributeFilter: ["class"]
+                    attributeFilter: ["class", "style"]
                 });
             }
         """)
@@ -298,11 +302,13 @@ class ZAPSpider(scrapy.Spider):
                     const elements = root.querySelectorAll('*');
 
                     for (const el of elements) {
+                                   
                         if (
                             el.tagName.toLowerCase() === 'button' ||                            
                             el.getAttribute('role') === 'button' ||
                             el.hasAttribute('onclick') ||
-                            el.getAttribute('aria-label') === 'Close Dialog'
+                            el.getAttribute('aria-label') === 'Close Dialog' ||
+                            el.tagName.toLowerCase() === 'sidenav'
                         ) {
                             clickable.push({
                                 html: el.outerHTML,
@@ -313,30 +319,12 @@ class ZAPSpider(scrapy.Spider):
                     }
                     return clickable;
                 }
-                                   
-                function findSideNav(node) {
-                    const results = [];
-                    const sidenavs = node.querySelectorAll('mat-sidenav');
-                                   
-                    for (const el of sidenavs) {                                   
-                        if (el.classList.contains('mat-drawer-opened')) {
-                            results.push({
-                                html: el.outerHTML,
-                                tag: el.tagName,
-                                text: el.innerText
-                            });
-                        }
-                    }
-                    
-                    return results;
-                }
 
                 const nodes = window.__newElements || [];
                 const results = [];
 
                 for (const node of nodes) {
                     results.push(...findClickableElements(node));
-                    results.push(...findSideNav(node));
                 }
 
                 window.__newElements = [];
@@ -408,7 +396,7 @@ def acquire_page_locators_from_xpath(xpath_strings, page):
 
 async def has_overlay(list_of_elements):
     for element in list_of_elements:
-        if await element.first.evaluate("el => el.tagName.toLowerCase() === 'mat-sidenav'"):
+        if await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'"):
             return True
 
     return False
@@ -417,15 +405,41 @@ async def remove_overlay_from_list(list_of_elements):
     overlay_element = 0
 
     for i, element in enumerate(list_of_elements):
-        is_overlay = await element.first.evaluate("el => el.tagName.toLowerCase() === 'mat-sidenav'")
+        is_overlay = await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'")
         if is_overlay:
             overlay_element = list_of_elements.pop(i)
             break
 
     return overlay_element, list_of_elements
 
-def close_overlay(overlay_element):
-    print("\nOVERLAY: ", overlay_element)
+async def close_overlay(page, overlay_element):
+    if(await has_transition_occured(overlay_element)):
+        position_dict = await overlay_element.bounding_box()
+
+        x_pos = position_dict["x"]
+        y_pos = position_dict["y"]
+        width = position_dict["width"]
+        out_of_box_modifier = 25
+
+        if x_pos is not None and y_pos is not None and width is not None:
+            await page.mouse.click(
+                (x_pos + width + out_of_box_modifier), #x-pos
+                (y_pos + out_of_box_modifier) #y-pos
+            )
+
+async def has_transition_occured(element, max_attempts=5, interval_s=0.25):
+    previous_position = await element.bounding_box()
+
+    for _ in range(max_attempts):
+        await asyncio.sleep(interval_s)
+        current_position = await element.bounding_box()
+
+        if previous_position == current_position:
+            return True
+        
+        previous_position = current_position
+
+    return False
 
 """
 PLAN med ledande frågor.
@@ -451,6 +465,7 @@ Antecknade problem
 * - Klicka på element i rätt ordning
 * - Upptäcka hur DOM:en eventuellt ändras efter ett klick, hämta dessa nya element och endast klicka på dem
 * - Hålla koll på state så man inte gör samma sak flera gångar
+* - hantera transistions?!
     
 
 * - Crawling A JAX -Based Web Applications through Dynamic Analysis of User Interface State Changes
