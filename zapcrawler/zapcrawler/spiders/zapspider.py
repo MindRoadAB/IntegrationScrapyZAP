@@ -203,9 +203,6 @@ class ZAPSpider(scrapy.Spider):
                     await page.wait_for_load_state("domcontentloaded")
 
                     new_elements = await self.get_new_elements(page)
-                    """print("\nNEW")
-                    for el in new_elements:
-                        print("\nEL: ", el)"""
                     xpath_strings = extract_interactive_xpath_string(new_elements)
                     new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
 
@@ -423,8 +420,8 @@ async def close_overlay(page, overlay_element):
 
         if x_pos is not None and y_pos is not None and width is not None:
             await page.mouse.click(
-                (x_pos + width + out_of_box_modifier), #x-pos
-                (y_pos + out_of_box_modifier) #y-pos
+                (x_pos + width + out_of_box_modifier),
+                (y_pos + out_of_box_modifier)
             )
 
 async def has_transition_occured(element, max_attempts=5, interval_s=0.25):
