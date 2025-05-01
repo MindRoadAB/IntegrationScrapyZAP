@@ -10,6 +10,8 @@ from urllib.parse import urljoin, urlparse
 import asyncio
 from collections import deque
 
+import traceback
+
 class ZAPSpider(scrapy.Spider):
     name = "zapspider"
 
@@ -104,10 +106,12 @@ class ZAPSpider(scrapy.Spider):
     async def parse_ajax(self, response):
         page = response.meta["playwright_page"]
         page.on("console", lambda msg: print(f"[console] {msg.type}: {msg.text}"))
-        page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
-        page.on('popup', lambda new_page: self.handle_new_page_popup(new_page))
+        page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop        
         await self.mutationobserver_setup(page)
-        await self.navigation_blocker(page)
+
+        #Hantering av navigation
+        await self.navigation_handler(page)
+        page.on('popup', lambda new_page: self.new_page_or_popup_handler(new_page))
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
 
@@ -212,7 +216,6 @@ class ZAPSpider(scrapy.Spider):
                     clickable_elements_deque.append(element)
 
             except Exception as e:
-                print("ERROR: ", e, "\nDEPTH: ", depth)
                 await page.wait_for_load_state("networkidle")
                 await page.wait_for_load_state("domcontentloaded")
                 clickable_elements_deque.append(element)
@@ -292,7 +295,7 @@ class ZAPSpider(scrapy.Spider):
             }
         """)
 
-    async def navigation_blocker(self, page):
+    async def navigation_handler(self, page):
         await page.evaluate("""
             window.onbeforeunload = function(event) {
                 console.log("NU NAVIGERAS DET")
@@ -300,12 +303,11 @@ class ZAPSpider(scrapy.Spider):
             }
         """)
 
-    async def handle_new_page_popup(self, page):
-        print("\nNY TABB ELLER WINDOW!!")
-        print("URL: ", page.url, "\n")
-
-    async def navigation_blocker_new_tab(self, page):
-        pass
+    async def new_page_or_popup_handler(self, page):
+        if any(ensure_same_domain(url, page.url) for url in self.urls):
+            pass
+        else:
+            await page.close()
         
     async def get_new_elements(self, page):
         return await page.evaluate("""
@@ -412,7 +414,7 @@ async def acquire_page_locators_from_xpath(xpath_strings, page):
 
 async def has_overlay(list_of_elements):
     for element in list_of_elements:
-        if await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'"):
+        if await element.count() > 0 and await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'"):
             return True
 
     return False
