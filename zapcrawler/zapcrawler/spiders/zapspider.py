@@ -8,7 +8,6 @@ from scrapy.utils.project import get_project_settings
 from parsel import Selector
 from urllib.parse import urljoin, urlparse
 import asyncio
-import time
 from collections import deque
 
 class ZAPSpider(scrapy.Spider):
@@ -106,7 +105,9 @@ class ZAPSpider(scrapy.Spider):
         page = response.meta["playwright_page"]
         page.on("console", lambda msg: print(f"[console] {msg.type}: {msg.text}"))
         page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop
+        page.on('popup', lambda new_page: self.handle_new_page_popup(new_page))
         await self.mutationobserver_setup(page)
+        await self.navigation_blocker(page)
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
 
@@ -173,7 +174,7 @@ class ZAPSpider(scrapy.Spider):
                 pass
 
     async def find_clickables_from_page(self, page):
-        selectors = ["button", '[role="button"]', "a", "[onclick]", '[aria-label="Close Dialog"]']
+        selectors = ["button", '[role="button"]', "[onclick]", '[aria-label="Close Dialog"]']
         clickable_elements = []
 
         for selector in selectors:
@@ -189,7 +190,6 @@ class ZAPSpider(scrapy.Spider):
         overlay_exist = await has_overlay(clickable_elements)
         if overlay_exist:
             overlay_element, clickable_elements = await remove_overlay_from_list(clickable_elements)
-
         clickable_elements_deque = deque(clickable_elements)
 
         while clickable_elements_deque and loops < (len(clickable_elements_deque) * 3):
@@ -204,7 +204,7 @@ class ZAPSpider(scrapy.Spider):
 
                     new_elements = await self.get_new_elements(page)
                     xpath_strings = extract_interactive_xpath_string(new_elements)
-                    new_clickables = acquire_page_locators_from_xpath(xpath_strings, page)
+                    new_clickables = await acquire_page_locators_from_xpath(xpath_strings, page)
 
                     if len(new_clickables) > 0:
                         await self.interact_with_page(page, {"clickables" : new_clickables}, (depth+1))
@@ -212,6 +212,7 @@ class ZAPSpider(scrapy.Spider):
                     clickable_elements_deque.append(element)
 
             except Exception as e:
+                print("ERROR: ", e, "\nDEPTH: ", depth)
                 await page.wait_for_load_state("networkidle")
                 await page.wait_for_load_state("domcontentloaded")
                 clickable_elements_deque.append(element)
@@ -290,6 +291,21 @@ class ZAPSpider(scrapy.Spider):
                 });
             }
         """)
+
+    async def navigation_blocker(self, page):
+        await page.evaluate("""
+            window.onbeforeunload = function(event) {
+                console.log("NU NAVIGERAS DET")
+                console.log(window.location.href)
+            }
+        """)
+
+    async def handle_new_page_popup(self, page):
+        print("\nNY TABB ELLER WINDOW!!")
+        print("URL: ", page.url, "\n")
+
+    async def navigation_blocker_new_tab(self, page):
+        pass
         
     async def get_new_elements(self, page):
         return await page.evaluate("""
@@ -381,13 +397,16 @@ def extract_interactive_xpath_string(elements):
 
     return list(xpath_strings)
 
-def acquire_page_locators_from_xpath(xpath_strings, page):
+async def acquire_page_locators_from_xpath(xpath_strings, page):
     list_of_locators = []
 
     xpath_strings.sort(key=lambda x: 'close-dialog' in x) #Ser till så att close-dialog alltid trycks sist.
 
     for xpath_string in xpath_strings:
-        list_of_locators.append(page.locator(xpath_string))
+        locator = page.locator(xpath_string)
+        count = await locator.count()
+        for i in range(count):
+            list_of_locators.append(locator.nth(i))
 
     return list_of_locators
 
