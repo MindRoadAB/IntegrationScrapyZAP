@@ -111,8 +111,6 @@ class ZAPSpider(scrapy.Spider):
         await self.state_handler(page)
 
         #Hantering av navigation
-        #await self.navigation_handler(page)
-        await page.route("**/*", self.navigation_handler)
         page.on('popup', lambda new_page: self.new_page_or_popup_handler(new_page))
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
@@ -312,7 +310,6 @@ class ZAPSpider(scrapy.Spider):
                         event.preventDefault();
                         event.stopPropagation();
                         const href = anchor.href;
-                        console.log("🔗 Blocked navigation to (href):", href);
                         window.__blockedNavigations.push({ type: "href", value: href });
                         return;
                     }
@@ -322,7 +319,6 @@ class ZAPSpider(scrapy.Spider):
                         event.preventDefault();
                         event.stopPropagation();
                         const route = anchor.getAttribute("routerlink");
-                        console.log("🧭 Blocked navigation to (routerLink on <a>):", route);
                         window.__blockedNavigations.push({ type: "routerLink", value: route });
                         return;
                     }
@@ -332,18 +328,12 @@ class ZAPSpider(scrapy.Spider):
                         event.preventDefault();
                         event.stopPropagation();
                         const route = button.getAttribute("routerlink");
-                        console.log("🧭 Blocked navigation to (routerLink on <button>):", route);
                         window.__blockedNavigations.push({ type: "routerLink", value: route });
                         return;
                     }
                 }, true);
             }
         """)
-
-
-    async def navigation_handler(self, route, request):
-        if request.is_navigation_request():
-            print("\n\nNAVIGATION BROTHER: ", request.url, "\n\n")
 
     async def new_page_or_popup_handler(self, page):
         if any(ensure_same_domain(url, page.url) for url in self.urls):
@@ -389,8 +379,6 @@ class ZAPSpider(scrapy.Spider):
                 return results;
             }
         """)
-    #(el.tagName.toLowerCase() === 'a' && el.hasAttribute('href')) ||
-
 
 """
 Övrigafunktioner
