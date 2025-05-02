@@ -50,7 +50,7 @@ class ZAPSpider(scrapy.Spider):
 
     def start_requests(self):
         for url in self.urls:
-            yield from self.crawl(url)
+            block_navigations = yield from self.crawl(url)
 
     
     """
@@ -118,7 +118,11 @@ class ZAPSpider(scrapy.Spider):
         current_depth = 1
         await self.interact_with_page(page, interactive_elements_dict, current_depth)
 
+        blocked_navigations = await page.evaluate("() => window.__blockedNavigations || []")
+
         await page.close()
+
+        return blocked_navigations
 
     """
     Interaktionsfunktioner
@@ -305,7 +309,6 @@ class ZAPSpider(scrapy.Spider):
 
                     window.__blockedNavigations = window.__blockedNavigations || [];
 
-                    // Blockera a[href]
                     if (anchor && anchor.getAttribute("href")) {
                         event.preventDefault();
                         event.stopPropagation();
@@ -314,7 +317,6 @@ class ZAPSpider(scrapy.Spider):
                         return;
                     }
 
-                    // Blockera a[routerLink]
                     if (anchor && anchor.hasAttribute("routerlink")) {
                         event.preventDefault();
                         event.stopPropagation();
@@ -323,7 +325,6 @@ class ZAPSpider(scrapy.Spider):
                         return;
                     }
 
-                    // Blockera button[routerLink]
                     if (button && button.hasAttribute("routerlink")) {
                         event.preventDefault();
                         event.stopPropagation();
