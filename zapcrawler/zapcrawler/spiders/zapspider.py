@@ -108,9 +108,11 @@ class ZAPSpider(scrapy.Spider):
         page.on("console", lambda msg: print(f"[console] {msg.type}: {msg.text}"))
         page.on("response", lambda response: asyncio.create_task(self.handle_response_ajax(response))) #Lyssnare efter AJAX-anrop        
         await self.mutationobserver_setup(page)
+        await self.state_handler(page)
 
         #Hantering av navigation
-        await self.navigation_handler(page)
+        #await self.navigation_handler(page)
+        await page.route("**/*", self.navigation_handler)
         page.on('popup', lambda new_page: self.new_page_or_popup_handler(new_page))
 
         interactive_elements_dict = await self.find_all_interactive_elements(page)
@@ -178,7 +180,7 @@ class ZAPSpider(scrapy.Spider):
                 pass
 
     async def find_clickables_from_page(self, page):
-        selectors = ["button", '[role="button"]', "[onclick]", '[aria-label="Close Dialog"]']
+        selectors = ["button", "a", '[role="button"]', "[onclick]", '[aria-label="Close Dialog"]']
         clickable_elements = []
 
         for selector in selectors:
@@ -295,17 +297,57 @@ class ZAPSpider(scrapy.Spider):
             }
         """)
 
-    async def navigation_handler(self, page):
+    async def state_handler(self, page):
         await page.evaluate("""
-            window.onbeforeunload = function(event) {
-                console.log("NU NAVIGERAS DET")
-                console.log(window.location.href)
+            () => {                            
+                document.addEventListener("click", function (event) {
+                    const target = event.target;
+                    const anchor = target.closest("a");
+                    const button = target.closest("button");
+
+                    window.__blockedNavigations = window.__blockedNavigations || [];
+
+                    // Blockera a[href]
+                    if (anchor && anchor.getAttribute("href")) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const href = anchor.href;
+                        console.log("🔗 Blocked navigation to (href):", href);
+                        window.__blockedNavigations.push({ type: "href", value: href });
+                        return;
+                    }
+
+                    // Blockera a[routerLink]
+                    if (anchor && anchor.hasAttribute("routerlink")) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const route = anchor.getAttribute("routerlink");
+                        console.log("🧭 Blocked navigation to (routerLink on <a>):", route);
+                        window.__blockedNavigations.push({ type: "routerLink", value: route });
+                        return;
+                    }
+
+                    // Blockera button[routerLink]
+                    if (button && button.hasAttribute("routerlink")) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const route = button.getAttribute("routerlink");
+                        console.log("🧭 Blocked navigation to (routerLink on <button>):", route);
+                        window.__blockedNavigations.push({ type: "routerLink", value: route });
+                        return;
+                    }
+                }, true);
             }
         """)
 
+
+    async def navigation_handler(self, route, request):
+        if request.is_navigation_request():
+            print("\n\nNAVIGATION BROTHER: ", request.url, "\n\n")
+
     async def new_page_or_popup_handler(self, page):
         if any(ensure_same_domain(url, page.url) for url in self.urls):
-            pass
+            print("\nPOPUP URL: ", page.url)
         else:
             await page.close()
         
@@ -319,7 +361,8 @@ class ZAPSpider(scrapy.Spider):
                     for (const el of elements) {
                                    
                         if (
-                            el.tagName.toLowerCase() === 'button' ||                            
+                            el.tagName.toLowerCase() === 'button' ||
+                            (el.tagName.toLowerCase() === 'a' && el.hasAttribute('href')) ||                        
                             el.getAttribute('role') === 'button' ||
                             el.hasAttribute('onclick') ||
                             el.getAttribute('aria-label') === 'Close Dialog' ||
@@ -484,6 +527,8 @@ Antecknade problem
 * - Upptäcka hur DOM:en eventuellt ändras efter ett klick, hämta dessa nya element och endast klicka på dem
 * - Hålla koll på state så man inte gör samma sak flera gångar
 * - hantera transistions?!
+* - Skiftar URL utan att trigga request med mera
+* - Borde kanske ha jobbat med JavaScript push- och popstate?
     
 
 * - Crawling A JAX -Based Web Applications through Dynamic Analysis of User Interface State Changes
