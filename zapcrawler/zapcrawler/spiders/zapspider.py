@@ -6,7 +6,7 @@ from scrapy_playwright.page import PageMethod
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from parsel import Selector
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 import asyncio
 from collections import deque
 
@@ -20,6 +20,7 @@ class ZAPSpider(scrapy.Spider):
         "SPIDER_MODULES" : ["zapcrawler.spiders"],
         "NEWSPIDER_MODULE" : "zapcrawler.spiders",
         "DEPTH_LIMIT" : 5,
+        "DUPEFILTER_DEBUG" : True,
 
         "DOWNLOAD_HANDLERS" : {
             "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
@@ -34,7 +35,8 @@ class ZAPSpider(scrapy.Spider):
                 "headless": False,
         },
         "PLAYWRIGHT_RESTART_DISCONNECTED_BROWSER" : True,
-        "CONCURRENT_REQUESTS": 256,
+        "CONCURRENT_REQUESTS" : 1,
+        "PLAYWRIGHT_MAX_PAGES_PER_CONTEXT" : 1,
         "ROBOTSTXT_OBEY" : True,
         "FEED_EXPORT_ENCODING" : "utf-8",
         "USER_AGENT" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -44,13 +46,13 @@ class ZAPSpider(scrapy.Spider):
         super(ZAPSpider, self).__init__(*args, **kwargs)
         self.urls = urls.copy()
         self.mode = mode
-        self.entrypoints = []
+        self.entrypoints = urls.copy()
         self.visited_urls = urls.copy()
         self.max_depth = 5
 
     def start_requests(self):
         for url in self.urls:
-            block_navigations = yield from self.crawl(url)
+            yield from self.crawl(url)
 
     
     """
@@ -83,8 +85,10 @@ class ZAPSpider(scrapy.Spider):
         yield scrapy.Request(
             url=url,
             callback=self.parse_ajax,
+            dont_filter=True,
             meta={
                 "playwright": True,
+                "playwright_context": "default",
                 "playwright_include_page" : True,
                 "playwright_page_methods" : [
                     PageMethod("wait_for_load_state", "networkidle")
@@ -122,7 +126,48 @@ class ZAPSpider(scrapy.Spider):
 
         await page.close()
 
-        return blocked_navigations
+        if len(blocked_navigations) > 1:
+            return self.handle_blocked_navigations(response, blocked_navigations)
+
+    
+    def handle_blocked_navigations(self, response, blocked_navigations):
+        new_requests = []
+
+        for new_url in blocked_navigations:
+            if new_url["type"] == "href" and ensure_same_domain(response.url, new_url["value"]) and new_url["value"] not in self.entrypoints and "redirect?" not in new_url["value"]:
+                self.entrypoints.append(new_url["value"])
+                new_requests.append(scrapy.Request(
+                    url=new_url["value"],
+                    callback=self.parse_ajax,
+                    dont_filter=True,
+                    meta={
+                        "playwright": True,
+                        "playwright_context": "default",
+                        "playwright_include_page" : True,
+                        "playwright_page_methods" : [
+                            PageMethod("wait_for_load_state", "networkidle")
+                        ]
+                    }
+                ))
+            elif new_url["type"] == "routerLink":
+                url = urljoin_domain(response.url, new_url["value"])
+                if ensure_same_domain(response.url, url) and url not in self.entrypoints and "redirect?" not in url:
+                    self.entrypoints.append(url)
+                    new_requests.append(scrapy.Request(
+                        url=url,
+                        callback=self.parse_ajax,
+                        dont_filter=True,
+                        meta={
+                            "playwright": True,
+                            "playwright_context": "default",
+                            "playwright_include_page" : True,
+                            "playwright_page_methods" : [
+                                PageMethod("wait_for_load_state", "networkidle")
+                            ]
+                        }
+                    ))
+
+        return new_requests
 
     """
     Interaktionsfunktioner
@@ -146,7 +191,7 @@ class ZAPSpider(scrapy.Spider):
         #Fullösning för att undvika oändlig rekursion
         if depth > self.max_depth:
             return
-        
+
         #await self.fill_fillables(page, interactive_elements_dict["fillables"])
         await self.click_clickables(page, depth, interactive_elements_dict["clickables"])
 
@@ -278,7 +323,20 @@ class ZAPSpider(scrapy.Spider):
                                 }
                             }
                         }
+                            
+                        if (
+                            mutation.type === "attributes" && 
+                            mutation.attributeName === "style" &&
+                            target.closest(".cdk-overlay-container")
+                        ) {
+                            const hasTargetClassChild = target.querySelector('.mat-mdc-menu-content') !== null;
 
+                            if (hasTargetClassChild) {
+                                wanted_child = target.querySelector('.mat-mdc-menu-content')
+                                window.__newElements.push(wanted_child);
+                            }
+                        }
+                            
                         if (
                             mutation.type === "attributes" &&
                             target.classList.contains("mat-drawer") &&
@@ -332,6 +390,12 @@ class ZAPSpider(scrapy.Spider):
                         window.__blockedNavigations.push({ type: "routerLink", value: route });
                         return;
                     }
+                            
+                    if (button && button.classList.contains('google-button')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        return;
+                    }
                 }, true);
             }
         """)
@@ -357,7 +421,8 @@ class ZAPSpider(scrapy.Spider):
                             el.getAttribute('role') === 'button' ||
                             el.hasAttribute('onclick') ||
                             el.getAttribute('aria-label') === 'Close Dialog' ||
-                            el.tagName.toLowerCase() === 'sidenav'
+                            el.tagName.toLowerCase() === 'sidenav' ||
+                            el.classList.contains('mat-mdc-menu-content')
                         ) {
                             clickable.push({
                                 html: el.outerHTML,
@@ -365,6 +430,7 @@ class ZAPSpider(scrapy.Spider):
                                 text: el.innerText
                             });
                         }
+                                   
                     }
                     return clickable;
                 }
@@ -396,10 +462,28 @@ def runspider(urls, mode):
     return crawler.spider.entrypoints
 
 def urljoin_domain(base_url, rel_url):
-    if rel_url is None or rel_url == "":
+    if not rel_url:
         return None
-    else:
-        return rel_url if rel_url.startswith("http://") or rel_url.startswith("https://") else urljoin(base_url, rel_url)
+
+    if rel_url.startswith("http://") or rel_url.startswith("https://"):
+        return rel_url
+
+    if rel_url.startswith("#") or rel_url.startswith("/#/") or is_hash_router(base_url, rel_url):
+        return join_hash_url(base_url, rel_url)
+
+    return urljoin(base_url, rel_url)
+
+def join_hash_url(base_url, router_link):
+    parsed_base = urlparse(base_url)
+
+    if not router_link.startswith("#"):
+        router_link = "/" + router_link.lstrip("/")
+
+    return urlunparse(parsed_base._replace(fragment=router_link.lstrip("#")))
+
+def is_hash_router(base_url, rel_url):
+    parsed_base = urlparse(base_url)
+    return parsed_base.fragment or not rel_url.startswith("/")
     
 def ensure_same_domain(url_one, url_two):
     return True if urlparse(url_one).netloc == urlparse(url_two).netloc else False
@@ -446,7 +530,7 @@ async def acquire_page_locators_from_xpath(xpath_strings, page):
 
 async def has_overlay(list_of_elements):
     for element in list_of_elements:
-        if await element.count() > 0 and await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'"):
+        if await element.count() > 0 and await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav' || el.classList.contains('mat-mdc-menu-content')"):
             return True
 
     return False
@@ -455,7 +539,7 @@ async def remove_overlay_from_list(list_of_elements):
     overlay_element = 0
 
     for i, element in enumerate(list_of_elements):
-        is_overlay = await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav'")
+        is_overlay = await element.first.evaluate("el => el.tagName.toLowerCase() === 'sidenav' || el.classList.contains('mat-mdc-menu-content')")
         if is_overlay:
             overlay_element = list_of_elements.pop(i)
             break
@@ -469,7 +553,7 @@ async def close_overlay(page, overlay_element):
         x_pos = position_dict["x"]
         y_pos = position_dict["y"]
         width = position_dict["width"]
-        out_of_box_modifier = 25
+        out_of_box_modifier = 1
 
         if x_pos is not None and y_pos is not None and width is not None:
             await page.mouse.click(
