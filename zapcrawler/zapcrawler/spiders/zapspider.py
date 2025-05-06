@@ -402,7 +402,7 @@ class ZAPSpider(scrapy.Spider):
 
     async def new_page_or_popup_handler(self, page):
         if any(ensure_same_domain(url, page.url) for url in self.urls):
-            print("\nPOPUP URL: ", page.url)
+            pass
         else:
             await page.close()
         
