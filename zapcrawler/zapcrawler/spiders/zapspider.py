@@ -32,6 +32,9 @@ class ZAPSpider(scrapy.Spider):
         "PLAYWRIGHT_BROWSER_TYPE" : 'firefox',
 
         "PLAYWRIGHT_LAUNCH_OPTIONS" : {
+                "proxy": {
+                    "server": "http://localhost:8080",
+                },
                 "headless": False,
         },
         "PLAYWRIGHT_RESTART_DISCONNECTED_BROWSER" : True,

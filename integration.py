@@ -11,7 +11,8 @@ class Integrator:
 
     def execute(self):
         confirmed_urls = self.crawl()
-        self.attack(confirmed_urls)
+        self.zap.run_spiders()
+        #self.attack(confirmed_urls)
 
     def crawl(self):
         self.crawler_result = list(set(runspider(self.seed_urls, self.mode)))
@@ -19,11 +20,7 @@ class Integrator:
         return self.double_check_crawler_result()
 
     def attack(self, confirmed_urls):
-        #self.zap.active_scan(confirmed_urls)
-        print("SKIPPING...")
-        print("\n", "FOUND ENTRYPOINTS:")
-        for url in self.crawler_result:
-            print("\n", url)
+        self.zap.run_custom_crawler()
 
     """
     Funktionen ansvarar för att dubbelkolla så inga URL:er förekommer utanför angivna domäner.
