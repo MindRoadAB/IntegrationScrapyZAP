@@ -9,3 +9,6 @@ virtual/
 
 # Loggfiler från Scrapy
 *.log
+
+# Zap sessioner, stor mapp
+zap_sessions/

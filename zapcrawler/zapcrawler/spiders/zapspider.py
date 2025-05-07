@@ -191,43 +191,53 @@ class ZAPSpider(scrapy.Spider):
         return interactive_elements_dict
 
     async def interact_with_page(self, page, interactive_elements_dict, depth):
-        #Fullösning för att undvika oändlig rekursion
+        #Lösning för att undvika oändlig rekursion
         if depth > self.max_depth:
             return
 
-        #await self.fill_fillables(page, interactive_elements_dict["fillables"])
+        if interactive_elements_dict.get("fillables"):
+            await self.fill_fillables(page, interactive_elements_dict["fillables"])
         await self.click_clickables(page, depth, interactive_elements_dict["clickables"])
 
 
-    async def find_fillables(self, page):
-        fillable_types = [
-            "input[type='text']",
-            "input[type='email']",
-            "input[type='search']",
-            "input[type='password']",
-            "input:not([type])",
-            "textarea",
-            "[contenteditable='true']"
-        ]
 
-        fillables = deque()
-        for selector in fillable_types:
-            elements = await page.query_selector_all(selector)
-            fillables.extend(elements)
-        
-        return fillables
+    async def find_fillables(self, page):
+        try:
+            fillable_selectors = [
+                "input[type='text']",
+                "input[type='email']",
+                "input[type='search']",
+                "input[type='password']",
+                "input:not([type])",
+                "textarea",
+                "[contenteditable='true']"
+            ]
+
+            locators = []
+            for selector in fillable_selectors:
+                locator_group = page.locator(selector)
+                count = await locator_group.count()
+
+                for i in range(count):
+                    locators.append(locator_group.nth(i))
+
+            return locators
+        except Exception as e:
+            print("\n", e)
 
     async def fill_fillables(self, page, fillables):
         text = "test"
+        fillables = deque(fillables)
 
         while fillables:
             fillable = fillables.popleft()
-
             try:
                 if await fillable.is_visible() and await fillable.is_enabled():
                     await fillable.fill(text)
+                    await fillable.press("Enter")
+                    await page.wait_for_load_state("networkidle")
             except Exception as e:
-                pass
+                await page.wait_for_load_state("networkidle")
 
     async def find_clickables_from_page(self, page):
         selectors = ["button", "a", '[role="button"]', "[onclick]", '[aria-label="Close Dialog"]']
