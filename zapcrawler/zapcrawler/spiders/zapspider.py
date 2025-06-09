@@ -10,8 +10,6 @@ from urllib.parse import urljoin, urlparse, urlunparse
 import asyncio
 from collections import deque
 
-import traceback
-
 class ZAPSpider(scrapy.Spider):
     name = "zapspider"
 
@@ -45,7 +43,7 @@ class ZAPSpider(scrapy.Spider):
         "USER_AGENT" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     }
 
-    def __init__(self, urls, mode="classic", *args, **kwargs):
+    def __init__(self, urls, mode="ajax", *args, **kwargs):
         super(ZAPSpider, self).__init__(*args, **kwargs)
         self.urls = urls.copy()
         self.mode = mode
@@ -587,37 +585,3 @@ async def has_transition_occured(element, max_attempts=5, interval_s=0.25):
         previous_position = current_position
 
     return False
-
-"""
-PLAN med ledande frågor.
-
-Vilka interaktionsfunktioner behöver jag?
-    Svar:
-        Klicka  - NOT DONE
-        login   - NOT DONE
-        scrolla - NOT DONE
-
-Hur ska jag hantera states (veta var jag har varit och inte)?
-    Problembeskrivning: Om jag inte kan tracka detta så är det stor risk för onödigt arbete samt oändliga loopar.
-    Svar: 
-
-Hur ska jag kunna lyssna på AJAX-förfrågningar
-    Svar:
-
-Antecknade problem
-* - inte trycker på element som är aktiva, behöver göra en check
-* - Hitta vilka element som är klickabara
-* - Säkerställa så att man inte följer länkar till andra sidor utanför domän
-* - Måste lyssna på nätverket för att plock aupp AJAX-anrop
-* - Klicka på element i rätt ordning
-* - Upptäcka hur DOM:en eventuellt ändras efter ett klick, hämta dessa nya element och endast klicka på dem
-* - Hålla koll på state så man inte gör samma sak flera gångar
-* - hantera transistions?!
-* - Skiftar URL utan att trigga request med mera
-* - Borde kanske ha jobbat med JavaScript push- och popstate?
-    
-
-* - Crawling A JAX -Based Web Applications through Dynamic Analysis of User Interface State Changes
-* - Crawling Rich Internet Applications: The State of the Art
-* - A Comparative Study of Web Application Security Parameters: Current Trends and Future Directions
-"""
