@@ -1,26 +1,17 @@
 # IntegrationScrapyZAP
-Projekt där Scrapy integreras med OWASP ZAP.
+Projekt där en egen crawler med funktionalitet att hantera AJAX integrerats med OWASP ZAP.
+Crawlern är byggd i Scrapy och använder Playwright för att rendera JS och möjliggöra interaktion.
 
 # Grundkrav
 För att kunna köra projektet behövs ett antal program.
 
 * OWASP ZAP - https://www.zaproxy.org/download/
 * Scrapy - https://github.com/scrapy/scrapy
-* Selenium
-* Geckodriver, för firefox
-* Playwright
+* Playwright - https://github.com/scrapy-plugins/scrapy-playwright (Plugin för Scrapy)
+
+Det finns även en requirements för samtliga python-plugins, se requirements.txt.
 
 # Setup/installation
-To Come
+Kör `git clone --recursive https://github.com/MindRoadAB/IntegrationScrapyZAP.git` för att få med Scrapy som är satt som submodule. Ladda sedan  ner och installera OWASP ZAP.
 
-# Plan för det fortsatta arbetet
-* Skapa en scan-policy - CHECK (Injection)
-* Implementera att följa URL:er i crawler - CHECK
-* Bryta ut ZAP-funktioner i egen klass - CHECK
-* Lägga in funktionalitet för att dubbelkolla så inga felaktiga URL:er kommer tillbaka från crawler - CHECK
-* Lägga till flagga -m --mode för att kunna välja vilken sorts crawling som ska utföras - CHECK
-* Lägga till parsning och extraktion av mer än bara forms - UNDER ARBETE
-* Lägga till AJAX-hantering - UNDER ARBETE (STORT ARBETE)
-* VID TID! - Liten chans att detta hinns med
-* - Bryt ut alla URL-funktioner i egen modul
-* - Bättre felhantering av felaktiga argument i kommandorad
+Skapa sedan en vm `python -m venv <namn>` och sedan aktivera den `source <filepath>`. Stå sedan i mappen med requirements.txt och kör `pip install -r requirements.txt`. Nu borde allt som behövs vara installerat och redo.

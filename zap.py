@@ -117,20 +117,16 @@ class Zap:
 
         return False
     
-    def compare_spiders(self,custom_endpoints, ajax_endpoints):
+    def compare_spiders(self, custom_endpoints, ajax_endpoints):
         set_custom = set(custom_endpoints)
         set_ajax = set(ajax_endpoints)
 
-        only_custom = set_custom - set_ajax
-        only_ajax = set_ajax - set_custom
-        common = set_custom & set_ajax
+        labels = ['Custom Crawler', 'AJAX Spider']
+        counts = [len(set_custom), len(set_ajax)]
 
-        labels = ['Endast Custom Crawler', 'Endast AJAX Spider', 'Gemensamma']
-        counts = [len(only_custom), len(only_ajax), len(common)]
-
-        plt.figure(figsize=(8, 6))
-        bars = plt.bar(labels, counts, color=['#ff9999', '#66b3ff', '#99ff99'])
-        plt.title('Jämförelse av upptäckta endpoints')
+        plt.figure(figsize=(6, 5))
+        bars = plt.bar(labels, counts, color=['#ff9999', '#66b3ff'])
+        plt.title('Antal upptäckta endpoints per crawler')
         plt.ylabel('Antal endpoints')
         plt.grid(axis='y', linestyle='--', alpha=0.7)
 
@@ -139,8 +135,8 @@ class Zap:
             plt.text(bar.get_x() + bar.get_width() / 2, yval + 0.5, int(yval), ha='center', va='bottom')
 
         plt.tight_layout()
-        plt.savefig("endpoint_comparison.png")
-        print("✅ Graf sparad som 'endpoint_comparison.png'")
+        plt.savefig("endpoint_comparison_simple.png")
+        print("✅ Graf sparad som 'endpoint_comparison_simple.png'")
 
     def ensure_zap_session_catalog(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
